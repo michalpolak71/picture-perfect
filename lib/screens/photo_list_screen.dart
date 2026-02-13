@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/photo_data.dart';
 import 'simple_draw_screen.dart';
+import 'pdf_report_screen.dart';
 
 class PhotoListScreen extends StatefulWidget {
   const PhotoListScreen({super.key});
@@ -268,6 +269,24 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PdfReportScreen(photos: _photos),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(24),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Icon(Icons.picture_as_pdf, size: 32, color: Colors.white),
+              ),
+            ),
+          ),
           Material(
             color: Colors.transparent,
             child: InkWell(
