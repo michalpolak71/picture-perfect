@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'screens/photo_list_screen.dart';
 import 'screens/map_screen.dart';
+import 'screens/simple_draw_screen.dart';
 import 'models/photo_data.dart';
 import 'utils/watermark_util.dart';
 
@@ -267,9 +268,13 @@ class _CameraScreenState extends State<CameraScreen> {
                           child: InkWell(
                             onTap: _navigateToCurrentLocation,
                             borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(Icons.gps_fixed, color: Colors.green, size: 28),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Icon(
+                                _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
+                                color: _gpsEnabled ? Colors.green : Colors.red,
+                                size: 28,
+                              ),
                             ),
                           ),
                         ),
@@ -450,6 +455,25 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
                       label: const Text('Anuluj'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final edited = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SimpleDrawScreen(imagePath: widget.imagePath),
+                          ),
+                        );
+                        if (edited == true && mounted) {
+                          setState(() {});
+                        }
+                      },
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edytuj'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
                       ),
                     ),
