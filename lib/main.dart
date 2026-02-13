@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'screens/photo_list_screen.dart';
 import 'screens/map_screen.dart';
 import 'models/photo_data.dart';
+import 'utils/watermark_util.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -164,11 +165,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'photo_$timestamp.jpg';
-      await File(imagePath).copy('${photosDir.path}/$fileName');
+      final finalPath = '${photosDir.path}/$fileName';
+      
+      // Copy image
+      await File(imagePath).copy(finalPath);
+      
+      // Add watermark
+      await WatermarkUtil.addWatermark(finalPath);
 
       // Save metadata with GPS
       final photoData = PhotoData(
-        imagePath: '${photosDir.path}/$fileName',
+        imagePath: finalPath,
         description: description,
         timestamp: timestamp,
         latitude: _currentPosition?.latitude,
@@ -182,8 +189,8 @@ class _CameraScreenState extends State<CameraScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_currentPosition != null 
-                ? 'Zdjęcie zapisane z lokalizacją GPS!' 
-                : 'Zdjęcie zapisane (bez GPS)'),
+                ? 'Zdjęcie zapisane z lokalizacją GPS i watermarkiem!' 
+                : 'Zdjęcie zapisane z watermarkiem (bez GPS)'),
           ),
         );
       }
@@ -232,11 +239,16 @@ class _CameraScreenState extends State<CameraScreen> {
                           icon: Icon(
                             _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
                             color: _gpsEnabled ? Colors.green : Colors.red,
+                            size: 28,
                           ),
+                          iconSize: 32,
+                          padding: const EdgeInsets.all(12),
                           onPressed: _getCurrentLocation,
                         ),
                         IconButton(
-                          icon: const Icon(Icons.map, color: Colors.white),
+                          icon: const Icon(Icons.map, color: Colors.white, size: 28),
+                          iconSize: 32,
+                          padding: const EdgeInsets.all(12),
                           onPressed: () {
                             Navigator.push(
                               context,
@@ -247,7 +259,9 @@ class _CameraScreenState extends State<CameraScreen> {
                           },
                         ),
                         IconButton(
-                          icon: const Icon(Icons.photo_library, color: Colors.white),
+                          icon: const Icon(Icons.photo_library, color: Colors.white, size: 28),
+                          iconSize: 32,
+                          padding: const EdgeInsets.all(12),
                           onPressed: () {
                             Navigator.push(
                               context,
@@ -285,15 +299,15 @@ class _CameraScreenState extends State<CameraScreen> {
           
           // Capture button
           Positioned(
-            bottom: 40,
+            bottom: 50,
             left: 0,
             right: 0,
             child: Center(
               child: GestureDetector(
                 onTap: _takePicture,
                 child: Container(
-                  width: 70,
-                  height: 70,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white,

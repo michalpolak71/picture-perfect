@@ -1,0 +1,55 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
+
+class WatermarkUtil {
+  static Future<String> addWatermark(String imagePath) async {
+    try {
+      // Load image
+      final imageBytes = await File(imagePath).readAsBytes();
+      final image = img.decodeImage(imageBytes);
+      if (image == null) return imagePath;
+
+      // Load logo
+      final ByteData logoData = await rootBundle.load('assets/logo.png');
+      final Uint8List logoBytes = logoData.buffer.asUint8List();
+      final logo = img.decodeImage(logoBytes);
+      if (logo == null) return imagePath;
+
+      // Resize logo to 20% of image width
+      final logoWidth = (image.width * 0.2).round();
+      final logoHeight = (logo.height * logoWidth / logo.width).round();
+      final resizedLogo = img.copyResize(logo, width: logoWidth, height: logoHeight);
+
+      // Position: top-left with padding
+      final x = 20;
+      final y = 20;
+
+      // Composite logo onto image
+      img.compositeImage(image, resizedLogo, dstX: x, dstY: y);
+
+      // Add date/time text
+      final now = DateTime.now();
+      final dateText = '${now.day}.${now.month}.${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+      
+      img.drawString(
+        image,
+        dateText,
+        font: img.arial24,
+        x: 20,
+        y: image.height - 50,
+        color: img.ColorRgb8(255, 255, 255),
+      );
+
+      // Save
+      final modifiedBytes = img.encodeJpg(image, quality: 95);
+      await File(imagePath).writeAsBytes(modifiedBytes);
+
+      return imagePath;
+    } catch (e) {
+      print('Error adding watermark: $e');
+      return imagePath;
+    }
+  }
+}

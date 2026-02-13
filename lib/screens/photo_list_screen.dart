@@ -123,18 +123,58 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
   }
 
   Future<void> _sendEmail() async {
-    final email = Uri.encodeComponent('');
-    final subject = Uri.encodeComponent('Zdjęcia Interklima');
-    final body = Uri.encodeComponent('Witam,\n\nPrzesyłam zdjęcia z dokumentacji.\n\nPozdrawiam');
-    
-    final Uri emailUri = Uri.parse('mailto:?subject=$subject&body=$body');
-    
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
-    } else {
+    if (_photos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Brak zdjęć do wysłania')),
+      );
+      return;
+    }
+
+    try {
+      // Create ZIP first
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Tworzenie ZIP...'),
+            ],
+          ),
+        ),
+      );
+
+      final directory = await getApplicationDocumentsDirectory();
+      final zipPath = '${directory.path}/photos_${DateTime.now().millisecondsSinceEpoch}.zip';
+      
+      final encoder = ZipFileEncoder();
+      encoder.create(zipPath);
+
+      for (var photo in _photos) {
+        if (await File(photo.imagePath).exists()) {
+          encoder.addFile(File(photo.imagePath));
+        }
+      }
+
+      encoder.close();
+
       if (mounted) {
+        Navigator.pop(context); // Close loading
+        
+        // Send via email with attachment
+        await Share.shareXFiles(
+          [XFile(zipPath)],
+          subject: 'Zdjęcia Interklima',
+          text: 'Witam,\n\nPrzesyłam zdjęcia z dokumentacji (${_photos.length} zdjęć).\n\nPozdrawiam',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nie można otworzyć aplikacji email')),
+          SnackBar(content: Text('Błąd: $e')),
         );
       }
     }
@@ -148,15 +188,25 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.mail),
-            onPressed: _sendEmail,
-            tooltip: 'Email',
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: const Icon(Icons.mail, size: 28),
+              iconSize: 32,
+              padding: const EdgeInsets.all(12),
+              onPressed: _sendEmail,
+              tooltip: 'Email z ZIP',
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.folder_zip),
-            onPressed: _createZipAndShare,
-            tooltip: 'Utwórz ZIP',
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: IconButton(
+              icon: const Icon(Icons.folder_zip, size: 28),
+              iconSize: 32,
+              padding: const EdgeInsets.all(12),
+              onPressed: _createZipAndShare,
+              tooltip: 'Utwórz ZIP',
+            ),
           ),
         ],
       ),
