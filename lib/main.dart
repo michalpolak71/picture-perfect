@@ -9,8 +9,11 @@ import 'package:path_provider/path_provider.dart';
 import 'screens/photo_list_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/simple_draw_screen.dart';
+import 'screens/sessions_screen.dart';
 import 'models/photo_data.dart';
+import 'models/photo_session.dart';
 import 'utils/watermark_util.dart';
+import 'utils/session_manager.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -55,6 +58,12 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isInitialized = false;
   bool _gpsEnabled = true;
   Position? _currentPosition;
+  double _currentZoom = 1.0;
+  double _minZoom = 1.0;
+  double _maxZoom = 8.0;
+  double _baseScale = 1.0;
+  String? _selectedSessionId;
+  String _selectedSessionName = 'Brak sesji';
 
   @override
   void initState() {
@@ -122,6 +131,92 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _showSessionSelector() async {
+    final sessions = await SessionManager.loadSessions();
+    
+    if (!mounted) return;
+    
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Wybierz sesję'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: const Text('Brak sesji'),
+                onTap: () => Navigator.pop(context, 'none'),
+              ),
+              const Divider(),
+              ...sessions.map((session) => ListTile(
+                leading: const Icon(Icons.folder),
+                title: Text(session.name),
+                subtitle: Text('${session.photoIds.length} zdjęć'),
+                onTap: () => Navigator.pop(context, session.id),
+              )),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Utwórz nową sesję'),
+                onTap: () => Navigator.pop(context, 'create'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    
+    if (result == 'none') {
+      setState(() {
+        _selectedSessionId = null;
+        _selectedSessionName = 'Brak sesji';
+      });
+    } else if (result == 'create') {
+      final controller = TextEditingController();
+      final name = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nowa sesja'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Nazwa sesji',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Anuluj'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Utwórz'),
+            ),
+          ],
+        ),
+      );
+      
+      if (name != null && name.isNotEmpty) {
+        final session = await SessionManager.createSession(name);
+        setState(() {
+          _selectedSessionId = session.id;
+          _selectedSessionName = session.name;
+        });
+      }
+    } else if (result != null) {
+      final session = sessions.firstWhere((s) => s.id == result);
+      setState(() {
+        _selectedSessionId = session.id;
+        _selectedSessionName = session.name;
+      });
+    }
+  }
+
   Future<void> _initializeCamera() async {
     if (cameras.isEmpty) return;
 
@@ -132,6 +227,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       await controller!.initialize();
+      _maxZoom = await controller!.getMaxZoomLevel();
+      _minZoom = await controller!.getMinZoomLevel();
       if (mounted) {
         setState(() {
           _isInitialized = true;
@@ -208,10 +305,16 @@ class _CameraScreenState extends State<CameraScreen> {
         timestamp: timestamp,
         latitude: _currentPosition?.latitude,
         longitude: _currentPosition?.longitude,
+        sessionId: _selectedSessionId,
       );
 
       final metaFile = File('${photosDir.path}/photo_$timestamp.json');
       await metaFile.writeAsString(json.encode(photoData.toJson()));
+
+      // Add to session if one is selected
+      if (_selectedSessionId != null) {
+        await SessionManager.addPhotoToSession(_selectedSessionId!, timestamp.toString());
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -246,7 +349,21 @@ class _CameraScreenState extends State<CameraScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(child: CameraPreview(controller!)),
+          Positioned.fill(
+            child: GestureDetector(
+              onScaleStart: (details) {
+                _baseScale = _currentZoom;
+              },
+              onScaleUpdate: (details) async {
+                final newZoom = (_baseScale * details.scale).clamp(_minZoom, _maxZoom);
+                await controller!.setZoomLevel(newZoom);
+                setState(() {
+                  _currentZoom = newZoom;
+                });
+              },
+              child: CameraPreview(controller!),
+            ),
+          ),
           
           // Top bar
           Positioned(
@@ -267,6 +384,24 @@ class _CameraScreenState extends State<CameraScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SessionsScreen(),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(Icons.folder, color: Colors.white, size: 28),
+                            ),
+                          ),
+                        ),
                         Material(
                           color: Colors.transparent,
                           child: InkWell(
@@ -322,6 +457,40 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ],
                 ),
+              ),
+            ),
+          ),
+          
+          // Session selector
+          Positioned(
+            bottom: 160,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.folder, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _showSessionSelector,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          _selectedSessionName,
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down, color: Colors.white),
+                ],
               ),
             ),
           ),

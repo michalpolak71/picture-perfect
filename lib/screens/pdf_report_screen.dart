@@ -94,6 +94,18 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final logoBytes = logoData.buffer.asUint8List();
       final logo = pw.MemoryImage(logoBytes);
 
+      // Load font for Polish characters
+      final fontData = await rootBundle.load('fonts/Roboto-Regular.ttf');
+      final ttf = pw.Font.ttf(fontData);
+      final fontBoldData = await rootBundle.load('fonts/Roboto-Bold.ttf');
+      final ttfBold = pw.Font.ttf(fontBoldData);
+
+      // Create theme with Polish font
+      final theme = pw.ThemeData.withFont(
+        base: ttf,
+        bold: ttfBold,
+      );
+
       // Create signature image if exists
       pw.MemoryImage? signatureImage;
       if (_signaturePoints.isNotEmpty) {
@@ -106,6 +118,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       // Title page
       pdf.addPage(
         pw.Page(
+          theme: theme,
           build: (pw.Context context) {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -151,6 +164,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
         pdf.addPage(
           pw.Page(
+            theme: theme,
             build: (pw.Context context) {
               return pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -196,6 +210,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       // Summary page
       pdf.addPage(
         pw.Page(
+          theme: theme,
           build: (pw.Context context) {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -306,7 +321,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
     final paint = Paint()
       ..color = const Color(0xFF000000)
-      ..strokeWidth = 2.0
+      ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < _signaturePoints.length - 1; i++) {
@@ -479,7 +494,7 @@ class SignaturePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = Colors.black
-      ..strokeWidth = 2.0
+      ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < points.length - 1; i++) {
