@@ -6,6 +6,7 @@ import 'package:archive/archive_io.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/photo_data.dart';
+import 'simple_draw_screen.dart';
 
 class PhotoListScreen extends StatefulWidget {
   const PhotoListScreen({super.key});
@@ -22,6 +23,37 @@ class _PhotoListScreenState extends State<PhotoListScreen> {
   void initState() {
     super.initState();
     _loadPhotos();
+  }
+
+  Future<void> _deletePhoto(PhotoData photo) async {
+    try {
+      // Delete image file
+      if (await File(photo.imagePath).exists()) {
+        await File(photo.imagePath).delete();
+      }
+      
+      // Delete metadata file
+      final metaPath = photo.imagePath.replaceAll('.jpg', '.json');
+      if (await File(metaPath).exists()) {
+        await File(metaPath).delete();
+      }
+      
+      // Reload photos
+      await _loadPhotos();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zdjęcie usunięte')),
+        );
+      }
+    } catch (e) {
+      print('Error deleting photo: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd usuwania: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadPhotos() async {
@@ -223,60 +255,125 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                     final photo = _photos[index];
                     final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
                     
-                    return Card(
-                      margin: const EdgeInsets.all(8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (File(photo.imagePath).existsSync())
-                            Image.file(
-                              File(photo.imagePath),
-                              height: 200,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                                    const SizedBox(width: 4),
+                    return GestureDetector(
+                      onLongPress: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Opcje'),
+                            content: const Text('Co chcesz zrobić?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SimpleDrawScreen(imagePath: photo.imagePath),
+                                    ),
+                                  ).then((_) => _loadPhotos());
+                                },
+                                child: const Text('Edytuj'),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Usuń zdjęcie'),
+                                      content: const Text('Czy na pewno chcesz usunąć to zdjęcie?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Anuluj'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text('Usuń', style: TextStyle(color: Colors.red)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  
+                                  if (confirm == true) {
+                                    await _deletePhoto(photo);
+                                  }
+                                },
+                                child: const Text('Usuń', style: TextStyle(color: Colors.red)),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Anuluj'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Card(
+                        margin: const EdgeInsets.all(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (File(photo.imagePath).existsSync())
+                              Image.file(
+                                File(photo.imagePath),
+                                height: 200,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (photo.hasLocation())
+                                        const Icon(Icons.location_on, size: 16, color: Colors.green),
+                                    ],
+                                  ),
+                                  if (photo.description.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
                                     Text(
-                                      '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                                      photo.description,
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ],
+                                  if (photo.hasLocation()) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'GPS: ${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
                                       style: TextStyle(
+                                        fontSize: 11,
                                         color: Colors.grey[600],
-                                        fontSize: 12,
                                       ),
                                     ),
-                                    const Spacer(),
-                                    if (photo.hasLocation())
-                                      const Icon(Icons.location_on, size: 16, color: Colors.green),
                                   ],
-                                ),
-                                if (photo.description.isNotEmpty) ...[
                                   const SizedBox(height: 8),
                                   Text(
-                                    photo.description,
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                ],
-                                if (photo.hasLocation()) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'GPS: ${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
+                                    'Przytrzymaj aby edytować lub usunąć',
                                     style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[600],
+                                      fontSize: 10,
+                                      color: Colors.grey[500],
+                                      fontStyle: FontStyle.italic,
                                     ),
                                   ),
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
