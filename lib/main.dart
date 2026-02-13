@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
 import 'screens/photo_list_screen.dart';
+import 'screens/map_screen.dart';
+import 'models/photo_data.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -47,6 +50,8 @@ class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   bool _permissionGranted = false;
   bool _isInitialized = false;
+  bool _gpsEnabled = true;
+  Position? _currentPosition;
 
   @override
   void initState() {
@@ -56,20 +61,44 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _requestPermissions() async {
     final cameraStatus = await Permission.camera.request();
-    final storageStatus = await Permission.storage.request();
+    final locationStatus = await Permission.location.request();
     
     if (cameraStatus.isGranted) {
       setState(() {
         _permissionGranted = true;
       });
       _initializeCamera();
+      
+      if (locationStatus.isGranted) {
+        _getCurrentLocation();
+      }
+    }
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _gpsEnabled = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      setState(() {
+        _currentPosition = position;
+        _gpsEnabled = true;
+      });
+    } catch (e) {
+      print('Error getting location: $e');
+      setState(() => _gpsEnabled = false);
     }
   }
 
   Future<void> _initializeCamera() async {
-    if (cameras.isEmpty) {
-      return;
-    }
+    if (cameras.isEmpty) return;
 
     controller = CameraController(
       cameras[0],
@@ -95,8 +124,11 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _takePicture() async {
-    if (controller == null || !controller!.value.isInitialized) {
-      return;
+    if (controller == null || !controller!.value.isInitialized) return;
+
+    // Refresh GPS before taking photo
+    if (_gpsEnabled) {
+      await _getCurrentLocation();
     }
 
     try {
@@ -104,16 +136,17 @@ class _CameraScreenState extends State<CameraScreen> {
       
       if (!mounted) return;
       
-      // Navigate to description screen
       final description = await Navigator.push<String>(
         context,
         MaterialPageRoute(
-          builder: (context) => PhotoDescriptionScreen(imagePath: image.path),
+          builder: (context) => PhotoDescriptionScreen(
+            imagePath: image.path,
+            position: _currentPosition,
+          ),
         ),
       );
 
       if (description != null) {
-        // Save photo with description
         await _savePhoto(image.path, description);
       }
     } catch (e) {
@@ -131,15 +164,27 @@ class _CameraScreenState extends State<CameraScreen> {
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'photo_$timestamp.jpg';
-      final savedImage = await File(imagePath).copy('${photosDir.path}/$fileName');
+      await File(imagePath).copy('${photosDir.path}/$fileName');
 
-      // Save description
-      final descFile = File('${photosDir.path}/photo_$timestamp.txt');
-      await descFile.writeAsString(description);
+      // Save metadata with GPS
+      final photoData = PhotoData(
+        imagePath: '${photosDir.path}/$fileName',
+        description: description,
+        timestamp: timestamp,
+        latitude: _currentPosition?.latitude,
+        longitude: _currentPosition?.longitude,
+      );
+
+      final metaFile = File('${photosDir.path}/photo_$timestamp.json');
+      await metaFile.writeAsString(json.encode(photoData.toJson()));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zdjęcie zapisane!')),
+          SnackBar(
+            content: Text(_currentPosition != null 
+                ? 'Zdjęcie zapisane z lokalizacją GPS!' 
+                : 'Zdjęcie zapisane (bez GPS)'),
+          ),
         );
       }
     } catch (e) {
@@ -152,30 +197,23 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!_permissionGranted) {
       return Scaffold(
         appBar: AppBar(title: const Text('Picture Perfect')),
-        body: const Center(
-          child: Text('Brak uprawnień do aparatu'),
-        ),
+        body: const Center(child: Text('Brak uprawnień do aparatu')),
       );
     }
 
     if (!_isInitialized || controller == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Picture Perfect')),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Full screen camera preview
-          Positioned.fill(
-            child: CameraPreview(controller!),
-          ),
+          Positioned.fill(child: CameraPreview(controller!)),
           
-          // Top bar with logo
+          // Top bar
           Positioned(
             top: 0,
             left: 0,
@@ -187,20 +225,39 @@ class _CameraScreenState extends State<CameraScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Image.asset(
-                      'assets/logo.png',
-                      height: 40,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.photo_library, color: Colors.white),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const PhotoListScreen(),
+                    Image.asset('assets/logo.png', height: 40),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
+                            color: _gpsEnabled ? Colors.green : Colors.red,
                           ),
-                        );
-                      },
+                          onPressed: _getCurrentLocation,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.map, color: Colors.white),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MapScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.photo_library, color: Colors.white),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const PhotoListScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -208,7 +265,25 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
           
-          // Bottom capture button
+          // GPS indicator
+          if (_currentPosition != null)
+            Positioned(
+              bottom: 120,
+              left: 20,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'GPS: ${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            ),
+          
+          // Capture button
           Positioned(
             bottom: 40,
             left: 0,
@@ -236,8 +311,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
 class PhotoDescriptionScreen extends StatefulWidget {
   final String imagePath;
+  final Position? position;
 
-  const PhotoDescriptionScreen({super.key, required this.imagePath});
+  const PhotoDescriptionScreen({
+    super.key,
+    required this.imagePath,
+    this.position,
+  });
 
   @override
   State<PhotoDescriptionScreen> createState() => _PhotoDescriptionScreenState();
@@ -257,23 +337,37 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dodaj opis'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.check),
-            onPressed: () {
-              Navigator.pop(context, _controller.text);
-            },
+            onPressed: () => Navigator.pop(context, _controller.text),
           ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: Image.file(
-              File(widget.imagePath),
-              fit: BoxFit.contain,
-            ),
+            child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
           ),
+          if (widget.position != null)
+            Container(
+              padding: const EdgeInsets.all(8),
+              color: Colors.green[100],
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'GPS: ${widget.position!.latitude.toStringAsFixed(6)}, ${widget.position!.longitude.toStringAsFixed(6)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.grey[200],
