@@ -260,19 +260,16 @@ class _CameraScreenState extends State<CameraScreen> {
                       child: Image.asset('assets/logo.png', height: 40),
                     ),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Material(
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: _navigateToCurrentLocation,
-                            borderRadius: BorderRadius.circular(24),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Icon(
-                                _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
-                                color: _gpsEnabled ? Colors.green : Colors.red,
-                                size: 32,
-                              ),
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(Icons.gps_fixed, color: Colors.green, size: 28),
                             ),
                           ),
                         ),
@@ -287,10 +284,10 @@ class _CameraScreenState extends State<CameraScreen> {
                                 ),
                               );
                             },
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(20),
                             child: const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Icon(Icons.map, color: Colors.white, size: 32),
+                              padding: EdgeInsets.all(10),
+                              child: Icon(Icons.map, color: Colors.white, size: 28),
                             ),
                           ),
                         ),
@@ -305,10 +302,10 @@ class _CameraScreenState extends State<CameraScreen> {
                                 ),
                               );
                             },
-                            borderRadius: BorderRadius.circular(24),
+                            borderRadius: BorderRadius.circular(20),
                             child: const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Icon(Icons.photo_library, color: Colors.white, size: 32),
+                              padding: EdgeInsets.all(10),
+                              child: Icon(Icons.photo_library, color: Colors.white, size: 28),
                             ),
                           ),
                         ),
