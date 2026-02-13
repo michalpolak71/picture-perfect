@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
+import 'package:image/image.dart' as img;
+import 'package:flutter/rendering.dart';
 
 class SimpleDrawScreen extends StatefulWidget {
   final String imagePath;
@@ -21,6 +24,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
   double strokeWidth = 5.0;
   DrawingTool selectedTool = DrawingTool.pen;
   Offset? shapeStart;
+  final GlobalKey _imageKey = GlobalKey();
 
   void _addText() {
     showDialog(
@@ -60,6 +64,131 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
     );
   }
 
+  Future<void> _saveEdits() async {
+    if (lines.isEmpty && shapes.isEmpty && texts.isEmpty) {
+      Navigator.pop(context, false);
+      return;
+    }
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Load original image
+      final bytes = await File(widget.imagePath).readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+      if (originalImage == null) return;
+
+      // Create canvas
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      
+      // Draw original image
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final uiImage = frame.image;
+      canvas.drawImage(uiImage, Offset.zero, Paint());
+
+      // Get scale factor
+      final RenderBox? renderBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
+      final scaleX = originalImage.width / (renderBox?.size.width ?? originalImage.width.toDouble());
+      final scaleY = originalImage.height / (renderBox?.size.height ?? originalImage.height.toDouble());
+
+      // Draw lines
+      for (var line in lines) {
+        final paint = Paint()
+          ..color = line.color
+          ..strokeWidth = line.width * scaleX
+          ..strokeCap = StrokeCap.round;
+        for (int i = 0; i < line.path.length - 1; i++) {
+          canvas.drawLine(
+            Offset(line.path[i].dx * scaleX, line.path[i].dy * scaleY),
+            Offset(line.path[i + 1].dx * scaleX, line.path[i + 1].dy * scaleY),
+            paint,
+          );
+        }
+      }
+
+      // Draw shapes
+      for (var shape in shapes) {
+        final paint = Paint()
+          ..color = shape.color
+          ..strokeWidth = shape.width * scaleX
+          ..style = PaintingStyle.stroke;
+        
+        final start = Offset(shape.start.dx * scaleX, shape.start.dy * scaleY);
+        final end = Offset(shape.end.dx * scaleX, shape.end.dy * scaleY);
+
+        if (shape.tool == DrawingTool.arrow) {
+          canvas.drawLine(start, end, paint);
+          final angle = atan2(end.dy - start.dy, end.dx - start.dx);
+          final arrowSize = 25.0 * scaleX;
+          final path = Path()
+            ..moveTo(end.dx, end.dy)
+            ..lineTo(end.dx - arrowSize * cos(angle - pi / 6), end.dy - arrowSize * sin(angle - pi / 6))
+            ..moveTo(end.dx, end.dy)
+            ..lineTo(end.dx - arrowSize * cos(angle + pi / 6), end.dy - arrowSize * sin(angle + pi / 6));
+          canvas.drawPath(path, paint);
+        } else if (shape.tool == DrawingTool.circle) {
+          final radius = ((end - start).distance / 2) * scaleX;
+          final center = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+          canvas.drawCircle(center, radius, paint);
+        }
+      }
+
+      // Draw texts
+      for (var textItem in texts) {
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: textItem.text,
+            style: TextStyle(
+              color: textItem.color,
+              fontSize: 32 * scaleX,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout();
+        textPainter.paint(
+          canvas,
+          Offset(textItem.position.dx * scaleX, textItem.position.dy * scaleY),
+        );
+      }
+
+      // Convert to image
+      final picture = recorder.endRecording();
+      final finalImage = await picture.toImage(originalImage.width, originalImage.height);
+      final byteData = await finalImage.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData == null) return;
+
+      // Convert to JPG and save
+      final pngBytes = byteData.buffer.asUint8List();
+      final image = img.decodeImage(pngBytes);
+      if (image != null) {
+        final jpg = img.encodeJpg(image, quality: 95);
+        await File(widget.imagePath).writeAsBytes(jpg);
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        Navigator.pop(context, true); // Return success
+      }
+    } catch (e) {
+      print('Error saving edits: $e');
+      if (mounted) {
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd zapisu: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -84,7 +213,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.check),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: _saveEdits,
           ),
         ],
       ),
@@ -139,7 +268,11 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
               child: Stack(
                 children: [
                   Center(
-                    child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+                    child: Image.file(
+                      File(widget.imagePath),
+                      key: _imageKey,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                   Positioned.fill(
                     child: GestureDetector(

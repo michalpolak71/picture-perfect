@@ -163,7 +163,34 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
     }
 
     try {
-      // Create ZIP first
+      // Calculate total size
+      int totalSize = 0;
+      for (var photo in _photos) {
+        if (await File(photo.imagePath).exists()) {
+          totalSize += await File(photo.imagePath).length();
+        }
+      }
+
+      final totalSizeMB = totalSize / (1024 * 1024);
+
+      // If few photos AND small size - share directly
+      if (_photos.length <= 3 && totalSizeMB < 15) {
+        final files = <XFile>[];
+        for (var photo in _photos) {
+          if (await File(photo.imagePath).exists()) {
+            files.add(XFile(photo.imagePath));
+          }
+        }
+        
+        await Share.shareXFiles(
+          files,
+          subject: 'Zdjęcia Interklima (${_photos.length})',
+          text: 'Zdjęcia z dokumentacji',
+        );
+        return;
+      }
+
+      // Otherwise create ZIP
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -195,11 +222,10 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
       if (mounted) {
         Navigator.pop(context); // Close loading
         
-        // Send via email with attachment
         await Share.shareXFiles(
           [XFile(zipPath)],
-          subject: 'Zdjęcia Interklima',
-          text: 'Witam,\n\nPrzesyłam zdjęcia z dokumentacji (${_photos.length} zdjęć).\n\nPozdrawiam',
+          subject: 'Zdjęcia Interklima (${_photos.length} zdjęć, ${totalSizeMB.toStringAsFixed(1)}MB)',
+          text: 'Zdjęcia z dokumentacji - spakowane w ZIP',
         );
       }
     } catch (e) {
@@ -278,6 +304,18 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                               TextButton(
                                 onPressed: () async {
                                   Navigator.pop(context);
+                                  // Share single photo
+                                  await Share.shareXFiles(
+                                    [XFile(photo.imagePath)],
+                                    subject: 'Zdjęcie Interklima',
+                                    text: photo.description.isNotEmpty ? photo.description : 'Zdjęcie z dokumentacji',
+                                  );
+                                },
+                                child: const Text('Udostępnij'),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  Navigator.pop(context);
                                   final confirm = await showDialog<bool>(
                                     context: context,
                                     builder: (context) => AlertDialog(
@@ -352,11 +390,40 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                   ],
                                   if (photo.hasLocation()) ...[
                                     const SizedBox(height: 8),
-                                    Text(
-                                      'GPS: ${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey[600],
+                                    GestureDetector(
+                                      onTap: () async {
+                                        final url = Uri.parse(
+                                          'https://www.google.com/maps/dir/?api=1&destination=${photo.latitude},${photo.longitude}',
+                                        );
+                                        if (await canLaunchUrl(url)) {
+                                          await launchUrl(url, mode: LaunchMode.externalApplication);
+                                        }
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green[50],
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: Colors.green),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.navigation, size: 16, color: Colors.green),
+                                            const SizedBox(width: 4),
+                                            Expanded(
+                                              child: Text(
+                                                'GPS: ${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.green),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ],
