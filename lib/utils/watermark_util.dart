@@ -34,34 +34,9 @@ class WatermarkUtil {
         dateText,
         font: img.arial24,
         x: 20,
-        y: image.height - 80,
+        y: image.height - 50,
         color: img.ColorRgb8(255, 255, 255),
       );
-
-      // Add GPS text at bottom left if available
-      if (latitude != null && longitude != null) {
-        final gpsText = 'GPS: ${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
-        
-        // Draw background for GPS text
-        final textWidth = gpsText.length * 10;
-        img.fillRect(
-          image,
-          x1: 15,
-          y1: image.height - 55,
-          x2: textWidth + 25,
-          y2: image.height - 25,
-          color: img.ColorRgb8(0, 128, 0),
-        );
-        
-        img.drawString(
-          image,
-          gpsText,
-          font: img.arial24,
-          x: 20,
-          y: image.height - 50,
-          color: img.ColorRgb8(255, 255, 255),
-        );
-      }
 
       // Save image
       final modifiedBytes = img.encodeJpg(image, quality: 95);

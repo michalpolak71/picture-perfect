@@ -173,6 +173,22 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
 
       final totalSizeMB = totalSize / (1024 * 1024);
 
+      // Create description with GPS for each photo
+      String emailBody = 'Zdjęcia z dokumentacji Interklima\n\n';
+      for (int i = 0; i < _photos.length; i++) {
+        final photo = _photos[i];
+        final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
+        emailBody += 'Zdjęcie ${i + 1}:\n';
+        emailBody += '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}\n';
+        if (photo.description.isNotEmpty) {
+          emailBody += 'Opis: ${photo.description}\n';
+        }
+        if (photo.hasLocation()) {
+          emailBody += '📍 Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}\n';
+        }
+        emailBody += '\n';
+      }
+
       // If few photos AND small size - share directly
       if (_photos.length <= 3 && totalSizeMB < 15) {
         final files = <XFile>[];
@@ -185,7 +201,7 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
         await Share.shareXFiles(
           files,
           subject: 'Zdjęcia Interklima (${_photos.length})',
-          text: 'Zdjęcia z dokumentacji',
+          text: emailBody,
         );
         return;
       }
@@ -216,6 +232,12 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
           encoder.addFile(File(photo.imagePath));
         }
       }
+      
+      // Add text file with descriptions and GPS
+      final infoPath = '${directory.path}/INFO.txt';
+      await File(infoPath).writeAsString(emailBody);
+      encoder.addFile(File(infoPath));
+      await File(infoPath).delete();
 
       encoder.close();
 
@@ -225,7 +247,7 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
         await Share.shareXFiles(
           [XFile(zipPath)],
           subject: 'Zdjęcia Interklima (${_photos.length} zdjęć, ${totalSizeMB.toStringAsFixed(1)}MB)',
-          text: 'Zdjęcia z dokumentacji - spakowane w ZIP',
+          text: emailBody,
         );
       }
     } catch (e) {
@@ -304,11 +326,19 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                               TextButton(
                                 onPressed: () async {
                                   Navigator.pop(context);
-                                  // Share single photo
+                                  // Share single photo with GPS in description
+                                  String shareText = '';
+                                  if (photo.description.isNotEmpty) {
+                                    shareText = 'Opis: ${photo.description}\n';
+                                  }
+                                  if (photo.hasLocation()) {
+                                    shareText += '📍 Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}';
+                                  }
+                                  
                                   await Share.shareXFiles(
                                     [XFile(photo.imagePath)],
                                     subject: 'Zdjęcie Interklima',
-                                    text: photo.description.isNotEmpty ? photo.description : 'Zdjęcie z dokumentacji',
+                                    text: shareText.isNotEmpty ? shareText : 'Zdjęcie z dokumentacji',
                                   );
                                 },
                                 child: const Text('Udostępnij'),
