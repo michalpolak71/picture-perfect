@@ -188,26 +188,29 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: IconButton(
-              icon: const Icon(Icons.mail, size: 28),
-              iconSize: 32,
-              padding: const EdgeInsets.all(12),
-              onPressed: _sendEmail,
-              tooltip: 'Email z ZIP',
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _sendEmail,
+              borderRadius: BorderRadius.circular(24),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
+                child: Icon(Icons.mail, size: 32, color: Colors.white),
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: IconButton(
-              icon: const Icon(Icons.folder_zip, size: 28),
-              iconSize: 32,
-              padding: const EdgeInsets.all(12),
-              onPressed: _createZipAndShare,
-              tooltip: 'Utwórz ZIP',
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _createZipAndShare,
+              borderRadius: BorderRadius.circular(24),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Icon(Icons.folder_zip, size: 32, color: Colors.white),
+              ),
             ),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _isLoading

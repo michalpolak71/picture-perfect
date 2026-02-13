@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
@@ -95,6 +96,28 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       print('Error getting location: $e');
       setState(() => _gpsEnabled = false);
+    }
+  }
+
+  Future<void> _navigateToCurrentLocation() async {
+    if (_currentPosition == null) {
+      await _getCurrentLocation();
+    }
+    
+    if (_currentPosition != null) {
+      final url = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=${_currentPosition!.latitude},${_currentPosition!.longitude}',
+      );
+      
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nie można otworzyć nawigacji')),
+          );
+        }
+      }
     }
   }
 
@@ -227,49 +250,67 @@ class _CameraScreenState extends State<CameraScreen> {
             right: 0,
             child: Container(
               color: Colors.black54,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
               child: SafeArea(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Image.asset('assets/logo.png', height: 40),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Image.asset('assets/logo.png', height: 40),
+                    ),
                     Row(
                       children: [
-                        IconButton(
-                          icon: Icon(
-                            _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
-                            color: _gpsEnabled ? Colors.green : Colors.red,
-                            size: 28,
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _navigateToCurrentLocation,
+                            borderRadius: BorderRadius.circular(24),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Icon(
+                                _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
+                                color: _gpsEnabled ? Colors.green : Colors.red,
+                                size: 32,
+                              ),
+                            ),
                           ),
-                          iconSize: 32,
-                          padding: const EdgeInsets.all(12),
-                          onPressed: _getCurrentLocation,
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.map, color: Colors.white, size: 28),
-                          iconSize: 32,
-                          padding: const EdgeInsets.all(12),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const MapScreen(),
-                              ),
-                            );
-                          },
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const MapScreen(),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(24),
+                            child: const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Icon(Icons.map, color: Colors.white, size: 32),
+                            ),
+                          ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.photo_library, color: Colors.white, size: 28),
-                          iconSize: 32,
-                          padding: const EdgeInsets.all(12),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const PhotoListScreen(),
-                              ),
-                            );
-                          },
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const PhotoListScreen(),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(24),
+                            child: const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Icon(Icons.photo_library, color: Colors.white, size: 32),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -303,15 +344,22 @@ class _CameraScreenState extends State<CameraScreen> {
             left: 0,
             right: 0,
             child: Center(
-              child: GestureDetector(
-                onTap: _takePicture,
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(color: Colors.blue, width: 4),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _takePicture,
+                  borderRadius: BorderRadius.circular(50),
+                  child: Container(
+                    width: 90,
+                    height: 90,
+                    padding: const EdgeInsets.all(5),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        border: Border.all(color: Colors.blue, width: 5),
+                      ),
+                    ),
                   ),
                 ),
               ),
