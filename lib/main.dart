@@ -217,7 +217,7 @@ class _CameraScreenState extends State<CameraScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_currentPosition != null 
-                ? 'Zdjęcie zapisane z GPS w EXIF i na obrazie!' 
+                ? 'Zdjęcie zapisane z GPS na obrazie!' 
                 : 'Zdjęcie zapisane z watermarkiem'),
           ),
         );
