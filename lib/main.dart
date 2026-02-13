@@ -194,8 +194,12 @@ class _CameraScreenState extends State<CameraScreen> {
       // Copy image
       await File(imagePath).copy(finalPath);
       
-      // Add watermark
-      await WatermarkUtil.addWatermark(finalPath);
+      // Add watermark with GPS
+      await WatermarkUtil.addWatermark(
+        finalPath,
+        latitude: _currentPosition?.latitude,
+        longitude: _currentPosition?.longitude,
+      );
 
       // Save metadata with GPS
       final photoData = PhotoData(
@@ -213,8 +217,8 @@ class _CameraScreenState extends State<CameraScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_currentPosition != null 
-                ? 'Zdjęcie zapisane z lokalizacją GPS i watermarkiem!' 
-                : 'Zdjęcie zapisane z watermarkiem (bez GPS)'),
+                ? 'Zdjęcie zapisane z GPS w EXIF i na obrazie!' 
+                : 'Zdjęcie zapisane z watermarkiem'),
           ),
         );
       }
