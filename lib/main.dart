@@ -10,6 +10,7 @@ import 'screens/photo_list_screen.dart';
 
 import 'screens/simple_draw_screen.dart';
 import 'screens/sessions_screen.dart';
+import 'screens/work_tracking_screen.dart';
 import 'models/photo_data.dart';
 import 'models/photo_session.dart';
 import 'utils/watermark_util.dart';
@@ -477,6 +478,14 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              ListTile(
+                leading: const Icon(Icons.access_time, size: 32),
+                title: const Text('Praca', style: TextStyle(fontSize: 18)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const WorkTrackingScreen()));
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.folder_open, size: 32),
                 title: const Text('Sesje', style: TextStyle(fontSize: 18)),
