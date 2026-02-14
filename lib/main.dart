@@ -483,7 +483,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 title: const Text('Praca', style: TextStyle(fontSize: 18)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const WorkTrackingScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => WorkTrackingScreen()));
                 },
               ),
               ListTile(
