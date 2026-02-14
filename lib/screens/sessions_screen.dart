@@ -51,7 +51,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Utwórz'),
+            child: const Text('Utw\u00f3rz'),
           ),
         ],
       ),
@@ -67,8 +67,8 @@ class _SessionsScreenState extends State<SessionsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Usuń sesję'),
-        content: Text('Czy na pewno usunąć "${session.name}"?\n\nZdjęcia pozostaną w galerii.'),
+        title: const Text('Usu\u0144 sesj\u0119'),
+        content: Text('Czy na pewno usun\u0105\u0107 "${session.name}"?\n\nZdj\u0119cia pozostan\u0105 w galerii.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -76,7 +76,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Usuń', style: TextStyle(color: Colors.red)),
+            child: const Text('Usu\u0144', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -92,11 +92,11 @@ class _SessionsScreenState extends State<SessionsScreen> {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final photosDir = Directory('${directory.path}/photos');
-      
+
       if (!await photosDir.exists()) return [];
 
       final List<PhotoData> photos = [];
-      
+
       for (final photoId in session.photoIds) {
         final metaFile = File('${photosDir.path}/photo_$photoId.json');
         if (await metaFile.exists()) {
@@ -105,7 +105,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
           photos.add(photo);
         }
       }
-      
+
       return photos;
     } catch (e) {
       print('Error loading session photos: $e');
@@ -115,12 +115,12 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
   void _openSessionPhotos(PhotoSession session) async {
     final photos = await _loadSessionPhotos(session);
-    
+
     if (!mounted) return;
-    
+
     if (photos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Brak zdjęć w tej sesji')),
+        const SnackBar(content: Text('Brak zdj\u0119\u0107 w tej sesji')),
       );
       return;
     }
@@ -143,9 +143,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sesje zdjęciowe'),
-        backgroundColor: Colors.blue,
+        title: const Text('Sesje zdj\u0119ciowe'),
+        backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: _sessions.isEmpty
           ? Center(
@@ -156,7 +157,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                   const SizedBox(height: 16),
                   const Text('Brak sesji', style: TextStyle(fontSize: 18, color: Colors.grey)),
                   const SizedBox(height: 8),
-                  const Text('Utwórz nową sesję aby rozpocząć', style: TextStyle(color: Colors.grey)),
+                  const Text('Utw\u00f3rz now\u0105 sesj\u0119 aby rozpocz\u0105\u0107', style: TextStyle(color: Colors.grey)),
                 ],
               ),
             )
@@ -165,16 +166,17 @@ class _SessionsScreenState extends State<SessionsScreen> {
               itemBuilder: (context, index) {
                 final session = _sessions[index];
                 final date = DateTime.fromMillisecondsSinceEpoch(session.createdTimestamp);
-                
+
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.folder),
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.grey[200],
+                      child: const Icon(Icons.folder, color: Colors.black54),
                     ),
                     title: Text(session.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(
-                      '${session.photoIds.length} zdjęć • ${date.day}.${date.month}.${date.year}',
+                      '${session.photoIds.length} zdj\u0119\u0107 \u2022 ${date.day}.${date.month}.${date.year}',
                     ),
                     trailing: PopupMenuButton(
                       itemBuilder: (context) => [
@@ -184,7 +186,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             children: [
                               Icon(Icons.picture_as_pdf),
                               SizedBox(width: 8),
-                              Text('Utwórz raport'),
+                              Text('Utw\u00f3rz raport'),
                             ],
                           ),
                         ),
@@ -194,7 +196,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                             children: [
                               Icon(Icons.delete, color: Colors.red),
                               SizedBox(width: 8),
-                              Text('Usuń', style: TextStyle(color: Colors.red)),
+                              Text('Usu\u0144', style: TextStyle(color: Colors.red)),
                             ],
                           ),
                         ),
@@ -214,7 +216,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _createNewSession,
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.grey[900],
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );

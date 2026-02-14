@@ -77,27 +77,22 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Load original image
       final bytes = await File(widget.imagePath).readAsBytes();
       final originalImage = img.decodeImage(bytes);
       if (originalImage == null) return;
 
-      // Create canvas
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      
-      // Draw original image
+
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final uiImage = frame.image;
       canvas.drawImage(uiImage, Offset.zero, Paint());
 
-      // Get scale factor
       final RenderBox? renderBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
       final scaleX = originalImage.width / (renderBox?.size.width ?? originalImage.width.toDouble());
       final scaleY = originalImage.height / (renderBox?.size.height ?? originalImage.height.toDouble());
 
-      // Draw lines
       for (var line in lines) {
         final paint = Paint()
           ..color = line.color
@@ -112,13 +107,12 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         }
       }
 
-      // Draw shapes
       for (var shape in shapes) {
         final paint = Paint()
           ..color = shape.color
           ..strokeWidth = shape.width * scaleX
           ..style = PaintingStyle.stroke;
-        
+
         final start = Offset(shape.start.dx * scaleX, shape.start.dy * scaleY);
         final end = Offset(shape.end.dx * scaleX, shape.end.dy * scaleY);
 
@@ -139,7 +133,6 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         }
       }
 
-      // Draw texts
       for (var textItem in texts) {
         final textPainter = TextPainter(
           text: TextSpan(
@@ -159,14 +152,12 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         );
       }
 
-      // Convert to image
       final picture = recorder.endRecording();
       final finalImage = await picture.toImage(originalImage.width, originalImage.height);
       final byteData = await finalImage.toByteData(format: ui.ImageByteFormat.png);
-      
+
       if (byteData == null) return;
 
-      // Convert to JPG and save
       final pngBytes = byteData.buffer.asUint8List();
       final image = img.decodeImage(pngBytes);
       if (image != null) {
@@ -175,15 +166,15 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
       }
 
       if (mounted) {
-        Navigator.pop(context); // Close loading
-        Navigator.pop(context, true); // Return success
+        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } catch (e) {
       print('Error saving edits: $e');
       if (mounted) {
-        Navigator.pop(context); // Close loading
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd zapisu: $e')),
+          SnackBar(content: Text('B\u0142\u0105d zapisu: $e')),
         );
       }
     }
@@ -193,9 +184,10 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edytuj zdjęcie'),
-        backgroundColor: Colors.blue,
+        title: const Text('Edytuj zdj\u0119cie'),
+        backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.undo),
@@ -220,7 +212,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
       body: Column(
         children: [
           Container(
-            color: Colors.grey[200],
+            color: Colors.grey[100],
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Column(
               children: [
@@ -228,14 +220,14 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _toolButton(DrawingTool.pen, Icons.edit, 'Rysuj'),
-                    _toolButton(DrawingTool.arrow, Icons.arrow_forward, 'Strzałka'),
-                    _toolButton(DrawingTool.circle, Icons.circle_outlined, 'Kółko'),
+                    _toolButton(DrawingTool.arrow, Icons.arrow_forward, 'Strza\u0142ka'),
+                    _toolButton(DrawingTool.circle, Icons.circle_outlined, 'K\u00f3\u0142ko'),
                     GestureDetector(
                       onTap: _addText,
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        child: Column(
-                          children: const [
+                        child: const Column(
+                          children: [
                             Icon(Icons.text_fields, color: Colors.grey, size: 32),
                             SizedBox(height: 4),
                             Text('Tekst', style: TextStyle(fontSize: 10)),
@@ -329,9 +321,9 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         padding: const EdgeInsets.all(8),
         child: Column(
           children: [
-            Icon(icon, color: isSelected ? Colors.blue : Colors.grey, size: 32),
+            Icon(icon, color: isSelected ? Colors.black : Colors.grey, size: 32),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Colors.blue : Colors.grey)),
+            Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Colors.black : Colors.grey)),
           ],
         ),
       ),
@@ -347,7 +339,8 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
           color: color,
-          border: Border.all(color: isSelected ? Colors.blue : Colors.grey, width: isSelected ? 4 : 2),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: isSelected ? Colors.black : Colors.grey, width: isSelected ? 4 : 2),
         ),
       ),
     );

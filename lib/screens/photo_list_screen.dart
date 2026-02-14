@@ -28,30 +28,27 @@ class _PhotoListScreenState extends State<PhotoListScreen> {
 
   Future<void> _deletePhoto(PhotoData photo) async {
     try {
-      // Delete image file
       if (await File(photo.imagePath).exists()) {
         await File(photo.imagePath).delete();
       }
-      
-      // Delete metadata file
+
       final metaPath = photo.imagePath.replaceAll('.jpg', '.json');
       if (await File(metaPath).exists()) {
         await File(metaPath).delete();
       }
-      
-      // Reload photos
+
       await _loadPhotos();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zdjęcie usunięte')),
+          const SnackBar(content: Text('Zdj\u0119cie usuni\u0119te')),
         );
       }
     } catch (e) {
       print('Error deleting photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd usuwania: $e')),
+          SnackBar(content: Text('B\u0142\u0105d usuwania: $e')),
         );
       }
     }
@@ -61,7 +58,7 @@ class _PhotoListScreenState extends State<PhotoListScreen> {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final photosDir = Directory('${directory.path}/photos');
-      
+
       if (!await photosDir.exists()) {
         setState(() => _isLoading = false);
         return;
@@ -71,7 +68,7 @@ class _PhotoListScreenState extends State<PhotoListScreen> {
       final jsonFiles = files.where((f) => f.path.endsWith('.json')).toList();
 
       List<PhotoData> photos = [];
-      
+
       for (var file in jsonFiles) {
         try {
           final content = await File(file.path).readAsString();
@@ -94,76 +91,32 @@ class _PhotoListScreenState extends State<PhotoListScreen> {
     }
   }
 
-  Future<void> _createZipAndShare() async {
+  // Share photos with GPS in description text (no txt file) - for WhatsApp etc.
+  Future<void> _sharePhotosWithGps() async {
     if (_photos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Brak zdjęć do spakowania')),
+        const SnackBar(content: Text('Brak zdj\u0119\u0107 do wys\u0142ania')),
       );
       return;
     }
 
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      final directory = await getApplicationDocumentsDirectory();
-      final zipPath = '${directory.path}/photos_${DateTime.now().millisecondsSinceEpoch}.zip';
-      
-      final encoder = ZipFileEncoder();
-      encoder.create(zipPath);
-
-      for (var photo in _photos) {
-        if (await File(photo.imagePath).exists()) {
-          encoder.addFile(File(photo.imagePath));
-          
-          // Add metadata as text file
-          final timestamp = photo.timestamp;
-          final metaPath = '${directory.path}/temp_meta_$timestamp.txt';
-          final metaContent = '''
-Opis: ${photo.description}
-Data: ${DateTime.fromMillisecondsSinceEpoch(timestamp)}
-${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lokalizacji GPS'}
-''';
-          await File(metaPath).writeAsString(metaContent);
-          encoder.addFile(File(metaPath));
-          await File(metaPath).delete();
+      // Build description with GPS for each photo
+      String shareText = 'Zdj\u0119cia z dokumentacji Interklima\n\n';
+      for (int i = 0; i < _photos.length; i++) {
+        final photo = _photos[i];
+        final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
+        shareText += 'Zdj\u0119cie ${i + 1}:\n';
+        shareText += '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}\n';
+        if (photo.description.isNotEmpty) {
+          shareText += 'Opis: ${photo.description}\n';
         }
+        if (photo.hasLocation()) {
+          shareText += '\ud83d\udccd Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}\n';
+        }
+        shareText += '\n';
       }
 
-      encoder.close();
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-        
-        await Share.shareXFiles(
-          [XFile(zipPath)],
-          subject: 'Zdjęcia Interklima',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd tworzenia ZIP: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _sendEmail() async {
-    if (_photos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Brak zdjęć do wysłania')),
-      );
-      return;
-    }
-
-    try {
       // Calculate total size
       int totalSize = 0;
       for (var photo in _photos) {
@@ -171,26 +124,9 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
           totalSize += await File(photo.imagePath).length();
         }
       }
-
       final totalSizeMB = totalSize / (1024 * 1024);
 
-      // Create description with GPS for each photo
-      String emailBody = 'Zdjęcia z dokumentacji Interklima\n\n';
-      for (int i = 0; i < _photos.length; i++) {
-        final photo = _photos[i];
-        final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
-        emailBody += 'Zdjęcie ${i + 1}:\n';
-        emailBody += '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}\n';
-        if (photo.description.isNotEmpty) {
-          emailBody += 'Opis: ${photo.description}\n';
-        }
-        if (photo.hasLocation()) {
-          emailBody += '📍 Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}\n';
-        }
-        emailBody += '\n';
-      }
-
-      // If few photos AND small size - share directly
+      // If few photos AND small size - share directly (no ZIP, no txt file)
       if (_photos.length <= 3 && totalSizeMB < 15) {
         final files = <XFile>[];
         for (var photo in _photos) {
@@ -198,16 +134,16 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
             files.add(XFile(photo.imagePath));
           }
         }
-        
+
         await Share.shareXFiles(
           files,
-          subject: 'Zdjęcia Interklima (${_photos.length})',
-          text: emailBody,
+          subject: 'Zdj\u0119cia Interklima (${_photos.length})',
+          text: shareText,
         );
         return;
       }
 
-      // Otherwise create ZIP
+      // Otherwise create ZIP with photos only (no txt file inside)
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -224,7 +160,7 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
 
       final directory = await getApplicationDocumentsDirectory();
       final zipPath = '${directory.path}/photos_${DateTime.now().millisecondsSinceEpoch}.zip';
-      
+
       final encoder = ZipFileEncoder();
       encoder.create(zipPath);
 
@@ -233,81 +169,76 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
           encoder.addFile(File(photo.imagePath));
         }
       }
-      
-      // Add text file with descriptions and GPS
+
+      // Add INFO.txt only inside ZIP (not as separate share)
       final infoPath = '${directory.path}/INFO.txt';
-      await File(infoPath).writeAsString(emailBody);
+      await File(infoPath).writeAsString(shareText);
       encoder.addFile(File(infoPath));
       await File(infoPath).delete();
 
       encoder.close();
 
       if (mounted) {
-        Navigator.pop(context); // Close loading
-        
+        Navigator.pop(context);
+
         await Share.shareXFiles(
           [XFile(zipPath)],
-          subject: 'Zdjęcia Interklima (${_photos.length} zdjęć, ${totalSizeMB.toStringAsFixed(1)}MB)',
-          text: emailBody,
+          subject: 'Zdj\u0119cia Interklima (${_photos.length} zdj\u0119\u0107, ${totalSizeMB.toStringAsFixed(1)}MB)',
+          text: shareText,
         );
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd: $e')),
+          SnackBar(content: Text('B\u0142\u0105d: $e')),
         );
       }
     }
+  }
+
+  // Share single photo with GPS in text (no txt file)
+  Future<void> _shareSinglePhoto(PhotoData photo) async {
+    String shareText = '';
+    if (photo.description.isNotEmpty) {
+      shareText = 'Opis: ${photo.description}\n';
+    }
+    if (photo.hasLocation()) {
+      shareText += '\ud83d\udccd Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}';
+    }
+
+    await Share.shareXFiles(
+      [XFile(photo.imagePath)],
+      subject: 'Zdj\u0119cie Interklima',
+      text: shareText.isNotEmpty ? shareText : 'Zdj\u0119cie z dokumentacji',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Zdjęcia (${_photos.length})'),
-        backgroundColor: Colors.blue,
+        title: Text('Zdj\u0119cia (${_photos.length})'),
+        backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PdfReportScreen(photos: _photos),
-                  ),
-                );
-              },
-              borderRadius: BorderRadius.circular(24),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Icon(Icons.picture_as_pdf, size: 32, color: Colors.white),
-              ),
-            ),
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf, size: 28),
+            tooltip: 'Utw\u00f3rz raport PDF',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PdfReportScreen(photos: _photos),
+                ),
+              );
+            },
           ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _sendEmail,
-              borderRadius: BorderRadius.circular(24),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Icon(Icons.mail, size: 32, color: Colors.white),
-              ),
-            ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _createZipAndShare,
-              borderRadius: BorderRadius.circular(24),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: Icon(Icons.folder_zip, size: 32, color: Colors.white),
-              ),
-            ),
+          IconButton(
+            icon: const Icon(Icons.share, size: 28),
+            tooltip: 'Wy\u015blij zdj\u0119cia z GPS',
+            onPressed: _sharePhotosWithGps,
           ),
           const SizedBox(width: 8),
         ],
@@ -315,20 +246,20 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _photos.isEmpty
-              ? const Center(child: Text('Brak zdjęć'))
+              ? const Center(child: Text('Brak zdj\u0119\u0107'))
               : ListView.builder(
                   itemCount: _photos.length,
                   itemBuilder: (context, index) {
                     final photo = _photos[index];
                     final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
-                    
+
                     return GestureDetector(
                       onLongPress: () {
                         showDialog(
                           context: context,
                           builder: (context) => AlertDialog(
                             title: const Text('Opcje'),
-                            content: const Text('Co chcesz zrobić?'),
+                            content: const Text('Co chcesz zrobi\u0107?'),
                             actions: [
                               TextButton(
                                 onPressed: () {
@@ -343,24 +274,11 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                 child: const Text('Edytuj'),
                               ),
                               TextButton(
-                                onPressed: () async {
+                                onPressed: () {
                                   Navigator.pop(context);
-                                  // Share single photo with GPS in description
-                                  String shareText = '';
-                                  if (photo.description.isNotEmpty) {
-                                    shareText = 'Opis: ${photo.description}\n';
-                                  }
-                                  if (photo.hasLocation()) {
-                                    shareText += '📍 Lokalizacja: https://maps.google.com/?q=${photo.latitude},${photo.longitude}';
-                                  }
-                                  
-                                  await Share.shareXFiles(
-                                    [XFile(photo.imagePath)],
-                                    subject: 'Zdjęcie Interklima',
-                                    text: shareText.isNotEmpty ? shareText : 'Zdjęcie z dokumentacji',
-                                  );
+                                  _shareSinglePhoto(photo);
                                 },
-                                child: const Text('Udostępnij'),
+                                child: const Text('Udost\u0119pnij'),
                               ),
                               TextButton(
                                 onPressed: () async {
@@ -368,8 +286,8 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                   final confirm = await showDialog<bool>(
                                     context: context,
                                     builder: (context) => AlertDialog(
-                                      title: const Text('Usuń zdjęcie'),
-                                      content: const Text('Czy na pewno chcesz usunąć to zdjęcie?'),
+                                      title: const Text('Usu\u0144 zdj\u0119cie'),
+                                      content: const Text('Czy na pewno chcesz usun\u0105\u0107 to zdj\u0119cie?'),
                                       actions: [
                                         TextButton(
                                           onPressed: () => Navigator.pop(context, false),
@@ -377,17 +295,17 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                         ),
                                         TextButton(
                                           onPressed: () => Navigator.pop(context, true),
-                                          child: const Text('Usuń', style: TextStyle(color: Colors.red)),
+                                          child: const Text('Usu\u0144', style: TextStyle(color: Colors.red)),
                                         ),
                                       ],
                                     ),
                                   );
-                                  
+
                                   if (confirm == true) {
                                     await _deletePhoto(photo);
                                   }
                                 },
-                                child: const Text('Usuń', style: TextStyle(color: Colors.red)),
+                                child: const Text('Usu\u0144', style: TextStyle(color: Colors.red)),
                               ),
                               TextButton(
                                 onPressed: () => Navigator.pop(context),
@@ -399,15 +317,19 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                       },
                       child: Card(
                         margin: const EdgeInsets.all(8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (File(photo.imagePath).existsSync())
-                              Image.file(
-                                File(photo.imagePath),
-                                height: 200,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
+                              ClipRRect(
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                child: Image.file(
+                                  File(photo.imagePath),
+                                  height: 200,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             Padding(
                               padding: const EdgeInsets.all(12),
@@ -452,7 +374,7 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
                                           color: Colors.green[50],
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius: BorderRadius.circular(8),
                                           border: Border.all(color: Colors.green),
                                         ),
                                         child: Row(
@@ -478,7 +400,7 @@ ${photo.hasLocation() ? 'GPS: ${photo.latitude}, ${photo.longitude}' : 'Brak lok
                                   ],
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Przytrzymaj aby edytować lub usunąć',
+                                    'Przytrzymaj aby edytowa\u0107 lub usun\u0105\u0107',
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Colors.grey[500],

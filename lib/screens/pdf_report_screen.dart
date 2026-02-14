@@ -25,14 +25,14 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   final List<Offset> _signaturePoints = [];
   final Set<int> _selectedPhotos = {};
   int _reportNumber = 1;
-  bool _isSigningLocked = false; // Lock signature pad
+  bool _isSigningMode = false; // When true, scroll is locked for signing
   final GlobalKey _signatureKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _loadReportNumber();
-    // Select all photos by default
     for (int i = 0; i < widget.photos.length; i++) {
       _selectedPhotos.add(i);
     }
@@ -65,21 +65,21 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
   String _getReportNumber() {
     final now = DateTime.now();
-    final months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+    final months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'pa\u017a', 'lis', 'gru'];
     return 'Nr ${_reportNumber.toString().padLeft(3, '0')}/${now.day}/${months[now.month - 1]}/${now.year}';
   }
 
   Future<void> _generatePdf() async {
     if (_nameController.text.isEmpty || _projectController.text.isEmpty || _clientController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wypełnij imię/nazwisko, projekt i klienta')),
+        const SnackBar(content: Text('Wype\u0142nij imi\u0119/nazwisko, projekt i klienta')),
       );
       return;
     }
 
     if (_selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wybierz przynajmniej jedno zdjęcie')),
+        const SnackBar(content: Text('Wybierz przynajmniej jedno zdj\u0119cie')),
       );
       return;
     }
@@ -96,19 +96,16 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final logoBytes = logoData.buffer.asUint8List();
       final logo = pw.MemoryImage(logoBytes);
 
-      // Load font for Polish characters
       final fontData = await rootBundle.load('fonts/Roboto-Regular.ttf');
       final ttf = pw.Font.ttf(fontData);
       final fontBoldData = await rootBundle.load('fonts/Roboto-Bold.ttf');
       final ttfBold = pw.Font.ttf(fontBoldData);
 
-      // Create theme with Polish font
       final theme = pw.ThemeData.withFont(
         base: ttf,
         bold: ttfBold,
       );
 
-      // Create signature image if exists
       pw.MemoryImage? signatureImage;
       if (_signaturePoints.isNotEmpty) {
         signatureImage = await _createSignatureImage();
@@ -140,12 +137,12 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 pw.SizedBox(height: 10),
                 pw.Text('Klient: ${_clientController.text}', style: const pw.TextStyle(fontSize: 16)),
                 pw.SizedBox(height: 10),
-                pw.Text('Data sporządzenia: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}',
+                pw.Text('Data sporz\u0105dzenia: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}',
                     style: const pw.TextStyle(fontSize: 16)),
                 pw.SizedBox(height: 10),
-                pw.Text('Sporządził: ${_nameController.text}', style: const pw.TextStyle(fontSize: 16)),
+                pw.Text('Sporz\u0105dzi\u0142: ${_nameController.text}', style: const pw.TextStyle(fontSize: 16)),
                 pw.SizedBox(height: 10),
-                pw.Text('Liczba zdjęć: ${selectedPhotosList.length}', style: const pw.TextStyle(fontSize: 16)),
+                pw.Text('Liczba zdj\u0119\u0107: ${selectedPhotosList.length}', style: const pw.TextStyle(fontSize: 16)),
                 pw.Spacer(),
                 _buildFooter(),
               ],
@@ -159,7 +156,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         final photoIndex = selectedPhotosList[i];
         final photo = widget.photos[photoIndex];
         final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
-        
+
         final imageFile = File(photo.imagePath);
         final imageBytes = await imageFile.readAsBytes();
         final image = pw.MemoryImage(imageBytes);
@@ -174,7 +171,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text('Zdjęcie ${i + 1}/${selectedPhotosList.length}',
+                      pw.Text('Zdj\u0119cie ${i + 1}/${selectedPhotosList.length}',
                           style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
                       pw.Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
                           style: const pw.TextStyle(fontSize: 12)),
@@ -224,7 +221,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                   pw.SizedBox(height: 30),
                 ],
                 pw.Spacer(),
-                pw.Text('Podpis sporządzającego:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                pw.Text('Podpis sporz\u0105dzaj\u0105cego:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 10),
                 if (signatureImage != null)
                   pw.Container(
@@ -270,80 +267,56 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd generowania PDF: $e')),
+          SnackBar(content: Text('B\u0142\u0105d generowania PDF: $e')),
         );
       }
     }
   }
 
+  // ===== FOOTER - ONLY BABICE NOWE =====
   pw.Widget _buildFooter() {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 10),
       decoration: const pw.BoxDecoration(
         border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400)),
       ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('Biuro Warszawa/Babice Nowe:', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('ul. Ogrodnicza 76', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('05-082 Babice Nowe', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('b.drabicki@interklima.pl', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('kom. Bartłomiej Drabicki', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('608 651 538', style: const pw.TextStyle(fontSize: 8)),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('Biuro Ostrołęka:', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('ul. Miła 17', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('07-410 Ostrołęka', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('biuro@interklima.pl', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('kom. Zbigniew Drabicki', style: const pw.TextStyle(fontSize: 8)),
-              pw.Text('602 121 765', style: const pw.TextStyle(fontSize: 8)),
-            ],
-          ),
+          pw.Text('Biuro Warszawa/Babice Nowe:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+          pw.Text('ul. Ogrodnicza 76, 05-082 Babice Nowe', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text('b.drabicki@interklima.pl  |  kom. Bart\u0142omiej Drabicki 608 651 538', style: const pw.TextStyle(fontSize: 8)),
         ],
       ),
     );
   }
 
   Future<pw.MemoryImage> _createSignatureImage() async {
-    // Get actual signature pad size
     final RenderBox? renderBox = _signatureKey.currentContext?.findRenderObject() as RenderBox?;
     final padWidth = renderBox?.size.width ?? 300.0;
     final padHeight = renderBox?.size.height ?? 200.0;
-    
-    // PDF signature box is 300x100
+
     final pdfWidth = 300.0;
     final pdfHeight = 100.0;
-    
-    // Calculate scale factors
+
     final scaleX = pdfWidth / padWidth;
     final scaleY = pdfHeight / padHeight;
-    
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
-    
-    // White background
+
     canvas.drawRect(
       Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
       Paint()..color = const Color(0xFFFFFFFF),
     );
 
-    // Draw signature with scaling
     final paint = Paint()
       ..color = const Color(0xFF000000)
-      ..strokeWidth = 3.0  // Thicker for PDF
+      ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < _signaturePoints.length - 1; i++) {
       if (_signaturePoints[i] != Offset.zero && _signaturePoints[i + 1] != Offset.zero) {
-        // Scale points to PDF size
         final scaledStart = Offset(_signaturePoints[i].dx * scaleX, _signaturePoints[i].dy * scaleY);
         final scaledEnd = Offset(_signaturePoints[i + 1].dx * scaleX, _signaturePoints[i + 1].dy * scaleY);
         canvas.drawLine(scaledStart, scaledEnd, paint);
@@ -356,22 +329,48 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     return pw.MemoryImage(byteData!.buffer.asUint8List());
   }
 
+  // Toggle signing mode - locks scroll so user can draw signature
+  void _enterSigningMode() {
+    setState(() {
+      _isSigningMode = true;
+    });
+    // Scroll to signature area
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_signatureKey.currentContext != null) {
+        Scrollable.ensureVisible(
+          _signatureKey.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  void _exitSigningMode() {
+    setState(() {
+      _isSigningMode = false;
+    });
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _projectController.dispose();
     _clientController.dispose();
     _summaryController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // ===== CLEAN TOP BAR - NO BLUE =====
       appBar: AppBar(
         title: const Text('Raport PDF'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.check),
@@ -380,6 +379,9 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
+        // Block scroll when signing
+        physics: _isSigningMode ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,46 +389,67 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             Text('Numer raportu: ${_getReportNumber()}',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
+
+            // ===== FORM FIELDS - CLEAN, NO BLUE =====
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Imię i nazwisko *',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: 'Imi\u0119 i nazwisko *',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.black87, width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _projectController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Nazwa projektu *',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.black87, width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _clientController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Klient *',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.black87, width: 2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _summaryController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Podsumowanie (opcjonalne)',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Colors.black87, width: 2),
+                ),
               ),
               maxLines: 4,
             ),
             const SizedBox(height: 24),
-            const Text('Wybierz zdjęcia:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+
+            // ===== PHOTO SELECTION =====
+            const Text('Wybierz zdj\u0119cia:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...List.generate(widget.photos.length, (index) {
               final photo = widget.photos[index];
               final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
               return CheckboxListTile(
                 value: _selectedPhotos.contains(index),
+                activeColor: Colors.black87,
                 onChanged: (bool? value) {
                   setState(() {
                     if (value == true) {
@@ -439,79 +462,139 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 title: Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}'),
                 subtitle: Text(photo.description.isEmpty ? 'Bez opisu' : photo.description),
                 secondary: File(photo.imagePath).existsSync()
-                    ? Image.file(File(photo.imagePath), width: 60, height: 60, fit: BoxFit.cover)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(File(photo.imagePath), width: 60, height: 60, fit: BoxFit.cover),
+                      )
                     : null,
               );
             }),
             const SizedBox(height: 24),
-            const Text('Podpis cyfrowy:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            
-            // Signature pad with lock
-            Container(
-              key: _signatureKey,
-              height: 200,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _isSigningLocked ? Colors.green : Colors.grey, 
-                  width: _isSigningLocked ? 3 : 1,
+
+            // ===== SIGNATURE SECTION =====
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Podpis cyfrowy:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                if (!_isSigningMode)
+                  TextButton.icon(
+                    onPressed: _enterSigningMode,
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: const Text('Podpisz'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.black87),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Info banner when not in signing mode
+            if (!_isSigningMode && _signaturePoints.isEmpty)
+              Container(
+                key: _signatureKey,
+                height: 120,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.grey[50],
                 ),
-                color: _isSigningLocked ? Colors.green[50] : Colors.white,
-                borderRadius: BorderRadius.circular(8),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.draw, color: Colors.grey, size: 32),
+                      SizedBox(height: 8),
+                      Text('Kliknij "Podpisz" aby z\u0142o\u017cy\u0107 podpis',
+                          style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                ),
               ),
-              child: _isSigningLocked
-                  ? Stack(
-                      children: [
-                        CustomPaint(
-                          painter: SignaturePainter(_signaturePoints),
-                          size: Size.infinite,
-                        ),
-                        // Lock overlay
-                        Container(
-                          color: Colors.green.withOpacity(0.1),
-                          child: const Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.lock, color: Colors.green, size: 48),
-                                SizedBox(height: 8),
-                                Text('Podpis zablokowany', 
-                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : GestureDetector(
-                      // ULTRA CZUŁY - cały obszar reaguje
-                      behavior: HitTestBehavior.opaque,
-                      onPanStart: (details) {
-                        setState(() {
-                          _signaturePoints.add(details.localPosition);
-                        });
-                      },
-                      onPanUpdate: (details) {
-                        setState(() {
-                          _signaturePoints.add(details.localPosition);
-                        });
-                      },
-                      onPanEnd: (details) {
-                        setState(() {
-                          _signaturePoints.add(Offset.zero);
-                        });
-                      },
-                      child: CustomPaint(
-                        painter: SignaturePainter(_signaturePoints),
-                        size: Size.infinite,
+
+            // Show locked signature preview
+            if (!_isSigningMode && _signaturePoints.isNotEmpty)
+              Container(
+                key: _signatureKey,
+                height: 120,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.green, width: 2),
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.green[50],
+                ),
+                child: Stack(
+                  children: [
+                    CustomPaint(
+                      painter: SignaturePainter(_signaturePoints),
+                      size: Size.infinite,
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Icon(Icons.lock, color: Colors.green[700], size: 20),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ===== SIGNING MODE - FULL DRAWING AREA =====
+            if (_isSigningMode) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                  border: Border.all(color: Colors.orange, width: 2),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Ekran zablokowany - pisz palcem po polu poni\u017cej',
+                        style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                     ),
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Signature controls
-            if (!_isSigningLocked) ...[
+                  ],
+                ),
+              ),
+              Container(
+                key: _signatureKey,
+                height: 200,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.orange, width: 2),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(8),
+                    bottomRight: Radius.circular(8),
+                  ),
+                  color: Colors.white,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanStart: (details) {
+                    setState(() {
+                      _signaturePoints.add(details.localPosition);
+                    });
+                  },
+                  onPanUpdate: (details) {
+                    setState(() {
+                      _signaturePoints.add(details.localPosition);
+                    });
+                  },
+                  onPanEnd: (details) {
+                    setState(() {
+                      _signaturePoints.add(Offset.zero);
+                    });
+                  },
+                  child: CustomPaint(
+                    painter: SignaturePainter(_signaturePoints),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -521,64 +604,91 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                         _signaturePoints.clear();
                       });
                     },
-                    icon: const Icon(Icons.clear),
-                    label: const Text('Wyczyść'),
+                    icon: const Icon(Icons.clear, size: 18),
+                    label: const Text('Wyczy\u015b\u0107'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: _signaturePoints.isEmpty ? null : () {
-                      setState(() {
-                        _isSigningLocked = true;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Row(
-                            children: [
-                              Icon(Icons.lock, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text('Podpis zablokowany'),
-                            ],
-                          ),
-                          duration: Duration(seconds: 2),
-                          backgroundColor: Colors.green,
+                  Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _signaturePoints.clear();
+                            _isSigningMode = false;
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.grey[700],
+                          side: BorderSide(color: Colors.grey[400]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                      );
-                    },
-                    icon: const Icon(Icons.lock),
-                    label: const Text('Podpisz'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
+                        child: const Text('Anuluj'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: _signaturePoints.isEmpty ? null : () {
+                          _exitSigningMode();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Text('Podpis zapisany'),
+                                ],
+                              ),
+                              duration: Duration(seconds: 2),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.check, size: 18),
+                        label: const Text('Zatwierd\u017a'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ] else ...[
+            ],
+
+            // Show "Popraw podpis" when signature exists and not in signing mode
+            if (!_isSigningMode && _signaturePoints.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
-                        _isSigningLocked = false;
                         _signaturePoints.clear();
                       });
+                      _enterSigningMode();
                     },
-                    icon: const Icon(Icons.edit),
+                    icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Popraw podpis'),
+                    style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
                   ),
                   ElevatedButton.icon(
                     onPressed: _generatePdf,
-                    icon: const Icon(Icons.picture_as_pdf),
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('Generuj PDF'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Colors.grey[900],
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ],
               ),
             ],
+
+            const SizedBox(height: 40),
           ],
         ),
       ),

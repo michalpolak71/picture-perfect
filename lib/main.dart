@@ -7,7 +7,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'screens/photo_list_screen.dart';
-import 'screens/map_screen.dart';
+
 import 'screens/simple_draw_screen.dart';
 import 'screens/sessions_screen.dart';
 import 'models/photo_data.dart';
