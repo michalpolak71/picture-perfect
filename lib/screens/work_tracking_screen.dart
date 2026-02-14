@@ -23,7 +23,7 @@ class _WorkTrackingScreenState extends State<WorkTrackingScreen> {
 
   // Google Apps Script webhook URL
   static const String _webhookUrl =
-      'https://script.google.com/macros/s/AKfycbyfdAdRl6AgL3rD07cy29oLB_OyHHtJiPPtyqLlaSMfqEXQGKZniizL957LhDjU7iI_/exec';
+      'https://script.google.com/macros/s/AKfycbxhxI1qlcrhSjEMq2L1crODYbFd21PnUYALihg7Y7VaxOc1Rul0yLKorRO9YRCJD0KZ/exec';
 
   @override
   void initState() {
