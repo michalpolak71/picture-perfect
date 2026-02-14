@@ -662,28 +662,3 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
     );
   }
 }
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context, _controller.text);
-                      },
-                      icon: const Icon(Icons.save),
-                      label: const Text('Zapisz'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
