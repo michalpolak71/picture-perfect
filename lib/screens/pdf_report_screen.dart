@@ -25,6 +25,8 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   final List<Offset> _signaturePoints = [];
   final Set<int> _selectedPhotos = {};
   int _reportNumber = 1;
+  bool _isSigningLocked = false; // Lock signature pad
+  final GlobalKey _signatureKey = GlobalKey();
 
   @override
   void initState() {
@@ -311,27 +313,45 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   }
 
   Future<pw.MemoryImage> _createSignatureImage() async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 300, 100));
+    // Get actual signature pad size
+    final RenderBox? renderBox = _signatureKey.currentContext?.findRenderObject() as RenderBox?;
+    final padWidth = renderBox?.size.width ?? 300.0;
+    final padHeight = renderBox?.size.height ?? 200.0;
     
+    // PDF signature box is 300x100
+    final pdfWidth = 300.0;
+    final pdfHeight = 100.0;
+    
+    // Calculate scale factors
+    final scaleX = pdfWidth / padWidth;
+    final scaleY = pdfHeight / padHeight;
+    
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
+    
+    // White background
     canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 300, 100),
+      Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
       Paint()..color = const Color(0xFFFFFFFF),
     );
 
+    // Draw signature with scaling
     final paint = Paint()
       ..color = const Color(0xFF000000)
-      ..strokeWidth = 4.0
+      ..strokeWidth = 3.0  // Thicker for PDF
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < _signaturePoints.length - 1; i++) {
       if (_signaturePoints[i] != Offset.zero && _signaturePoints[i + 1] != Offset.zero) {
-        canvas.drawLine(_signaturePoints[i], _signaturePoints[i + 1], paint);
+        // Scale points to PDF size
+        final scaledStart = Offset(_signaturePoints[i].dx * scaleX, _signaturePoints[i].dy * scaleY);
+        final scaledEnd = Offset(_signaturePoints[i + 1].dx * scaleX, _signaturePoints[i + 1].dy * scaleY);
+        canvas.drawLine(scaledStart, scaledEnd, paint);
       }
     }
 
     final picture = recorder.endRecording();
-    final img = await picture.toImage(300, 100);
+    final img = await picture.toImage(pdfWidth.toInt(), pdfHeight.toInt());
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     return pw.MemoryImage(byteData!.buffer.asUint8List());
   }
@@ -424,60 +444,141 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
               );
             }),
             const SizedBox(height: 24),
-            const Text('Podpis (rysuj palcem):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onPanStart: (details) {
-                setState(() {
-                  _signaturePoints.add(details.localPosition);
-                });
-              },
-              onPanUpdate: (details) {
-                setState(() {
-                  _signaturePoints.add(details.localPosition);
-                });
-              },
-              onPanEnd: (details) {
-                setState(() {
-                  _signaturePoints.add(Offset.zero);
-                });
-              },
-              child: Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  color: Colors.white,
+            const Text('Podpis cyfrowy:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            
+            // Signature pad with lock
+            Container(
+              key: _signatureKey,
+              height: 200,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _isSigningLocked ? Colors.green : Colors.grey, 
+                  width: _isSigningLocked ? 3 : 1,
                 ),
-                child: CustomPaint(
-                  painter: SignaturePainter(_signaturePoints),
-                  size: Size.infinite,
-                ),
+                color: _isSigningLocked ? Colors.green[50] : Colors.white,
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: _isSigningLocked
+                  ? Stack(
+                      children: [
+                        CustomPaint(
+                          painter: SignaturePainter(_signaturePoints),
+                          size: Size.infinite,
+                        ),
+                        // Lock overlay
+                        Container(
+                          color: Colors.green.withOpacity(0.1),
+                          child: const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.lock, color: Colors.green, size: 48),
+                                SizedBox(height: 8),
+                                Text('Podpis zablokowany', 
+                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : GestureDetector(
+                      // ULTRA CZUŁY - cały obszar reaguje
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (details) {
+                        setState(() {
+                          _signaturePoints.add(details.localPosition);
+                        });
+                      },
+                      onPanUpdate: (details) {
+                        setState(() {
+                          _signaturePoints.add(details.localPosition);
+                        });
+                      },
+                      onPanEnd: (details) {
+                        setState(() {
+                          _signaturePoints.add(Offset.zero);
+                        });
+                      },
+                      child: CustomPaint(
+                        painter: SignaturePainter(_signaturePoints),
+                        size: Size.infinite,
+                      ),
+                    ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _signaturePoints.clear();
-                    });
-                  },
-                  icon: const Icon(Icons.clear),
-                  label: const Text('Wyczyść podpis'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _generatePdf,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text('Generuj PDF'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
+            
+            const SizedBox(height: 12),
+            
+            // Signature controls
+            if (!_isSigningLocked) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _signaturePoints.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.clear),
+                    label: const Text('Wyczyść'),
                   ),
-                ),
-              ],
-            ),
+                  ElevatedButton.icon(
+                    onPressed: _signaturePoints.isEmpty ? null : () {
+                      setState(() {
+                        _isSigningLocked = true;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.lock, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Podpis zablokowany'),
+                            ],
+                          ),
+                          duration: Duration(seconds: 2),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.lock),
+                    label: const Text('Podpisz'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _isSigningLocked = false;
+                        _signaturePoints.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Popraw podpis'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _generatePdf,
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('Generuj PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

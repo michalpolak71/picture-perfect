@@ -92,6 +92,9 @@ class _CameraScreenState extends State<CameraScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => _gpsEnabled = false);
+        if (mounted) {
+          _showGpsWarning();
+        }
         return;
       }
 
@@ -106,7 +109,26 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       print('Error getting location: $e');
       setState(() => _gpsEnabled = false);
+      if (mounted) {
+        _showGpsWarning();
+      }
     }
+  }
+
+  void _showGpsWarning() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('GPS wyłączony'),
+        content: const Text('Włącz GPS i dane komórkowe, aby zapisywać lokalizację na zdjęciach.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _navigateToCurrentLocation() async {
@@ -334,14 +356,12 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     if (!_permissionGranted) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Picture Perfect')),
         body: const Center(child: Text('Brak uprawnień do aparatu')),
       );
     }
 
     if (!_isInitialized || controller == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Picture Perfect')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -349,6 +369,7 @@ class _CameraScreenState extends State<CameraScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // Full screen camera preview
           Positioned.fill(
             child: GestureDetector(
               onScaleStart: (details) {
@@ -365,95 +386,33 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
           
-          // Top bar
+          // Top left: Logo + GPS dot
           Positioned(
             top: 0,
             left: 0,
-            right: 0,
-            child: Container(
-              color: Colors.black54,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-              child: SafeArea(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Image.asset('assets/logo.png', height: 40),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const SessionsScreen(),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(Icons.folder, color: Colors.white, size: 28),
-                            ),
+                    Image.asset('assets/logo.png', height: 32),
+                    const SizedBox(width: 8),
+                    // GPS dot indicator
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _gpsEnabled ? Colors.green : Colors.red,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_gpsEnabled ? Colors.green : Colors.red).withOpacity(0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
                           ),
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _navigateToCurrentLocation,
-                            borderRadius: BorderRadius.circular(20),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Icon(
-                                _gpsEnabled ? Icons.gps_fixed : Icons.gps_off,
-                                color: _gpsEnabled ? Colors.green : Colors.red,
-                                size: 28,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const MapScreen(),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(Icons.map, color: Colors.white, size: 28),
-                            ),
-                          ),
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const PhotoListScreen(),
-                                ),
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(Icons.photo_library, color: Colors.white, size: 28),
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -461,79 +420,38 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
           
-          // Session selector
+          // Top right: Hamburger menu
           Positioned(
-            bottom: 160,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.folder, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _showSessionSelector,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          _selectedSessionName,
-                          style: const TextStyle(color: Colors.white, fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Icon(Icons.arrow_drop_down, color: Colors.white),
-                ],
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              child: IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white, size: 32),
+                padding: const EdgeInsets.all(20),
+                onPressed: () => _showMainMenu(),
               ),
             ),
           ),
           
-          // GPS indicator
-          if (_currentPosition != null)
-            Positioned(
-              bottom: 120,
-              left: 20,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'GPS: ${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ),
-            ),
-          
-          // Capture button
+          // Capture button with larger hit area
           Positioned(
-            bottom: 50,
+            bottom: 40,
             left: 0,
             right: 0,
             child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _takePicture,
-                  borderRadius: BorderRadius.circular(50),
+              child: GestureDetector(
+                onTap: _takePicture,
+                child: Container(
+                  width: 110, // Larger hit area
+                  height: 110,
+                  alignment: Alignment.center,
                   child: Container(
-                    width: 90,
-                    height: 90,
-                    padding: const EdgeInsets.all(5),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(color: Colors.blue, width: 5),
-                      ),
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(color: Colors.white.withOpacity(0.5), width: 6),
                     ),
                   ),
                 ),
@@ -541,6 +459,60 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Main hamburger menu
+  void _showMainMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.folder_open, size: 32),
+                title: const Text('Sesje', style: TextStyle(fontSize: 18)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SessionsScreen()));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, size: 32),
+                title: const Text('Galeria', style: TextStyle(fontSize: 18)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PhotoListScreen()));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, size: 32),
+                title: const Text('Raporty', style: TextStyle(fontSize: 18)),
+                subtitle: const Text('Dostępne w sesjach'),
+                enabled: false,
+              ),
+              const Divider(),
+              ListTile(
+                leading: Icon(Icons.folder, size: 32, color: _selectedSessionId == null ? Colors.grey : Colors.blue),
+                title: Text(_selectedSessionName, style: const TextStyle(fontSize: 16)),
+                subtitle: const Text('Aktualna sesja'),
+                trailing: const Icon(Icons.edit),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSessionSelector();
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -572,80 +544,124 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Dodaj opis'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Dodaj opis', style: TextStyle(fontSize: 16)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: () => Navigator.pop(context, _controller.text),
+            icon: const Icon(Icons.check, size: 28),
+            onPressed: () {
+              Navigator.pop(context, _controller.text);
+              // Show subtle checkmark animation
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Zapisano'),
+                    ],
+                  ),
+                  duration: const Duration(milliseconds: 800),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
           ),
         ],
       ),
       body: Column(
         children: [
+          // Full screen image
           Expanded(
-            child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
-          ),
-          if (widget.position != null)
-            Container(
-              padding: const EdgeInsets.all(8),
-              color: Colors.green[100],
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'GPS: ${widget.position!.latitude.toStringAsFixed(6)}, ${widget.position!.longitude.toStringAsFixed(6)}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+                ),
+                // Edit button floating
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton(
+                    onPressed: () async {
+                      final edited = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SimpleDrawScreen(imagePath: widget.imagePath),
+                        ),
+                      );
+                      if (edited == true && mounted) {
+                        setState(() {});
+                      }
+                    },
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.edit, color: Colors.black),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+          
+          // Description input + GPS
           Container(
+            color: Colors.grey[900],
             padding: const EdgeInsets.all(16),
-            color: Colors.grey[200],
             child: Column(
               children: [
+                // GPS chip
+                if (widget.position != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.green, size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          'GPS: ${widget.position!.latitude.toStringAsFixed(6)}, ${widget.position!.longitude.toStringAsFixed(6)}',
+                          style: TextStyle(fontSize: 11, color: Colors.green[900]),
+                        ),
+                      ],
+                    ),
+                  ),
+                
+                // Text field
                 TextField(
                   controller: _controller,
-                  decoration: const InputDecoration(
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
                     hintText: 'Dodaj opis zdjęcia...',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Anuluj'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
+                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    filled: true,
+                    fillColor: Colors.grey[800],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        final edited = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SimpleDrawScreen(imagePath: widget.imagePath),
-                          ),
-                        );
-                        if (edited == true && mounted) {
-                          setState(() {});
-                        }
-                      },
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Edytuj'),
-                      style: ElevatedButton.styleFrom(
+                  ),
+                  maxLines: 2,
+                  autofocus: true,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
                       ),
