@@ -24,6 +24,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
   double strokeWidth = 5.0;
   DrawingTool selectedTool = DrawingTool.pen;
   Offset? shapeStart;
+  Offset? _currentShapeEnd;
   final GlobalKey _imageKey = GlobalKey();
 
   void _addText() {
@@ -89,9 +90,12 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
       final uiImage = frame.image;
       canvas.drawImage(uiImage, Offset.zero, Paint());
 
-      final RenderBox? renderBox = _imageKey.currentContext?.findRenderObject() as RenderBox?;
-      final scaleX = originalImage.width / (renderBox?.size.width ?? originalImage.width.toDouble());
-      final scaleY = originalImage.height / (renderBox?.size.height ?? originalImage.height.toDouble());
+      final RenderBox? renderBox =
+          _imageKey.currentContext?.findRenderObject() as RenderBox?;
+      final scaleX = originalImage.width /
+          (renderBox?.size.width ?? originalImage.width.toDouble());
+      final scaleY = originalImage.height /
+          (renderBox?.size.height ?? originalImage.height.toDouble());
 
       for (var line in lines) {
         final paint = Paint()
@@ -101,7 +105,8 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         for (int i = 0; i < line.path.length - 1; i++) {
           canvas.drawLine(
             Offset(line.path[i].dx * scaleX, line.path[i].dy * scaleY),
-            Offset(line.path[i + 1].dx * scaleX, line.path[i + 1].dy * scaleY),
+            Offset(
+                line.path[i + 1].dx * scaleX, line.path[i + 1].dy * scaleY),
             paint,
           );
         }
@@ -118,17 +123,21 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
 
         if (shape.tool == DrawingTool.arrow) {
           canvas.drawLine(start, end, paint);
-          final angle = atan2(end.dy - start.dy, end.dx - start.dx);
+          final angle =
+              atan2(end.dy - start.dy, end.dx - start.dx);
           final arrowSize = 25.0 * scaleX;
           final path = Path()
             ..moveTo(end.dx, end.dy)
-            ..lineTo(end.dx - arrowSize * cos(angle - pi / 6), end.dy - arrowSize * sin(angle - pi / 6))
+            ..lineTo(end.dx - arrowSize * cos(angle - pi / 6),
+                end.dy - arrowSize * sin(angle - pi / 6))
             ..moveTo(end.dx, end.dy)
-            ..lineTo(end.dx - arrowSize * cos(angle + pi / 6), end.dy - arrowSize * sin(angle + pi / 6));
+            ..lineTo(end.dx - arrowSize * cos(angle + pi / 6),
+                end.dy - arrowSize * sin(angle + pi / 6));
           canvas.drawPath(path, paint);
         } else if (shape.tool == DrawingTool.circle) {
-          final radius = ((end - start).distance / 2) * scaleX;
-          final center = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+          final radius = ((end - start).distance / 2);
+          final center =
+              Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
           canvas.drawCircle(center, radius, paint);
         }
       }
@@ -153,8 +162,10 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
       }
 
       final picture = recorder.endRecording();
-      final finalImage = await picture.toImage(originalImage.width, originalImage.height);
-      final byteData = await finalImage.toByteData(format: ui.ImageByteFormat.png);
+      final finalImage =
+          await picture.toImage(originalImage.width, originalImage.height);
+      final byteData =
+          await finalImage.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData == null) return;
 
@@ -170,11 +181,10 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      print('Error saving edits: $e');
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('B\u0142\u0105d zapisu: $e')),
+          SnackBar(content: Text('Błąd zapisu: $e')),
         );
       }
     }
@@ -184,7 +194,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edytuj zdj\u0119cie'),
+        title: const Text('Edytuj zdjęcie'),
         backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -193,12 +203,12 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
             icon: const Icon(Icons.undo),
             onPressed: () {
               setState(() {
-                if (shapes.isNotEmpty) {
+                if (texts.isNotEmpty) {
+                  texts.removeLast();
+                } else if (shapes.isNotEmpty) {
                   shapes.removeLast();
                 } else if (lines.isNotEmpty) {
                   lines.removeLast();
-                } else if (texts.isNotEmpty) {
-                  texts.removeLast();
                 }
               });
             },
@@ -220,12 +230,20 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _toolButton(DrawingTool.pen, Icons.edit, 'Rysuj'),
-                    _toolButton(DrawingTool.arrow, Icons.arrow_forward, 'Strza\u0142ka'),
-                    _toolButton(DrawingTool.circle, Icons.circle_outlined, 'K\u00f3\u0142ko'),
+                    _toolButton(
+                        DrawingTool.arrow, Icons.arrow_forward, 'Strzałka'),
+                    _toolButton(
+                        DrawingTool.circle, Icons.circle_outlined, 'Kółko'),
                     GestureDetector(
                       onTap: _addText,
                       child: Container(
                         padding: const EdgeInsets.all(8),
+                        decoration: selectedTool == DrawingTool.text
+                            ? BoxDecoration(
+                                color: Colors.black12,
+                                borderRadius: BorderRadius.circular(8),
+                              )
+                            : null,
                         child: const Column(
                           children: [
                             Icon(Icons.text_fields, color: Colors.grey, size: 32),
@@ -271,35 +289,60 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                       onPanStart: (details) {
                         if (selectedTool == DrawingTool.pen) {
                           setState(() {
-                            lines.add(DrawnLine([details.localPosition], selectedColor, strokeWidth));
+                            lines.add(DrawnLine(
+                                [details.localPosition],
+                                selectedColor,
+                                strokeWidth));
                           });
-                        } else {
-                          shapeStart = details.localPosition;
+                        } else if (selectedTool != DrawingTool.text) {
+                          setState(() {
+                            shapeStart = details.localPosition;
+                            _currentShapeEnd = details.localPosition;
+                          });
                         }
                       },
                       onPanUpdate: (details) {
-                        if (selectedTool == DrawingTool.pen && lines.isNotEmpty) {
+                        if (selectedTool == DrawingTool.pen &&
+                            lines.isNotEmpty) {
                           setState(() {
                             lines.last.path.add(details.localPosition);
+                          });
+                        } else if (selectedTool != DrawingTool.text &&
+                            shapeStart != null) {
+                          setState(() {
+                            _currentShapeEnd = details.localPosition;
                           });
                         }
                       },
                       onPanEnd: (details) {
-                        if (selectedTool != DrawingTool.pen && shapeStart != null) {
+                        if (selectedTool != DrawingTool.pen &&
+                            selectedTool != DrawingTool.text &&
+                            shapeStart != null &&
+                            _currentShapeEnd != null) {
                           setState(() {
                             shapes.add(DrawnShape(
                               start: shapeStart!,
-                              end: details.localPosition,
+                              end: _currentShapeEnd!,
                               color: selectedColor,
                               width: strokeWidth,
                               tool: selectedTool,
                             ));
+                            shapeStart = null;
+                            _currentShapeEnd = null;
                           });
-                          shapeStart = null;
                         }
                       },
                       child: CustomPaint(
-                        painter: DrawingPainter(lines: lines, shapes: shapes, texts: texts),
+                        painter: DrawingPainter(
+                          lines: lines,
+                          shapes: shapes,
+                          texts: texts,
+                          previewStart: shapeStart,
+                          previewEnd: _currentShapeEnd,
+                          previewTool: selectedTool,
+                          previewColor: selectedColor,
+                          previewWidth: strokeWidth,
+                        ),
                         size: Size.infinite,
                       ),
                     ),
@@ -319,11 +362,20 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
       onTap: () => setState(() => selectedTool = tool),
       child: Container(
         padding: const EdgeInsets.all(8),
+        decoration: isSelected
+            ? BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(8),
+              )
+            : null,
         child: Column(
           children: [
             Icon(icon, color: isSelected ? Colors.black : Colors.grey, size: 32),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, color: isSelected ? Colors.black : Colors.grey)),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10,
+                    color: isSelected ? Colors.black : Colors.grey)),
           ],
         ),
       ),
@@ -340,7 +392,9 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: isSelected ? Colors.black : Colors.grey, width: isSelected ? 4 : 2),
+          border: Border.all(
+              color: isSelected ? Colors.black : Colors.grey,
+              width: isSelected ? 4 : 2),
         ),
       ),
     );
@@ -359,7 +413,12 @@ class DrawnShape {
   final Color color;
   final double width;
   final DrawingTool tool;
-  DrawnShape({required this.start, required this.end, required this.color, required this.width, required this.tool});
+  DrawnShape(
+      {required this.start,
+      required this.end,
+      required this.color,
+      required this.width,
+      required this.tool});
 }
 
 class DrawnText {
@@ -373,44 +432,88 @@ class DrawingPainter extends CustomPainter {
   final List<DrawnLine> lines;
   final List<DrawnShape> shapes;
   final List<DrawnText> texts;
+  final Offset? previewStart;
+  final Offset? previewEnd;
+  final DrawingTool? previewTool;
+  final Color? previewColor;
+  final double? previewWidth;
 
-  DrawingPainter({required this.lines, required this.shapes, required this.texts});
+  DrawingPainter({
+    required this.lines,
+    required this.shapes,
+    required this.texts,
+    this.previewStart,
+    this.previewEnd,
+    this.previewTool,
+    this.previewColor,
+    this.previewWidth,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     for (var line in lines) {
-      final paint = Paint()..color = line.color..strokeWidth = line.width..strokeCap = StrokeCap.round;
+      final paint = Paint()
+        ..color = line.color
+        ..strokeWidth = line.width
+        ..strokeCap = StrokeCap.round;
       for (int i = 0; i < line.path.length - 1; i++) {
         canvas.drawLine(line.path[i], line.path[i + 1], paint);
       }
     }
 
     for (var shape in shapes) {
-      final paint = Paint()..color = shape.color..strokeWidth = shape.width..style = PaintingStyle.stroke;
-      if (shape.tool == DrawingTool.arrow) {
-        canvas.drawLine(shape.start, shape.end, paint);
-        final angle = atan2(shape.end.dy - shape.start.dy, shape.end.dx - shape.start.dx);
-        const arrowSize = 25.0;
-        final path = Path()
-          ..moveTo(shape.end.dx, shape.end.dy)
-          ..lineTo(shape.end.dx - arrowSize * cos(angle - pi / 6), shape.end.dy - arrowSize * sin(angle - pi / 6))
-          ..moveTo(shape.end.dx, shape.end.dy)
-          ..lineTo(shape.end.dx - arrowSize * cos(angle + pi / 6), shape.end.dy - arrowSize * sin(angle + pi / 6));
-        canvas.drawPath(path, paint);
-      } else if (shape.tool == DrawingTool.circle) {
-        final radius = (shape.end - shape.start).distance / 2;
-        final center = Offset((shape.start.dx + shape.end.dx) / 2, (shape.start.dy + shape.end.dy) / 2);
-        canvas.drawCircle(center, radius, paint);
-      }
+      _drawShape(canvas, shape.start, shape.end, shape.color, shape.width, shape.tool);
+    }
+
+    // Live preview
+    if (previewStart != null &&
+        previewEnd != null &&
+        previewTool != null &&
+        previewTool != DrawingTool.pen &&
+        previewTool != DrawingTool.text) {
+      _drawShape(canvas, previewStart!, previewEnd!, previewColor ?? Colors.red,
+          previewWidth ?? 5.0, previewTool!);
     }
 
     for (var textItem in texts) {
       final textPainter = TextPainter(
-        text: TextSpan(text: textItem.text, style: TextStyle(color: textItem.color, fontSize: 32, fontWeight: FontWeight.bold)),
+        text: TextSpan(
+            text: textItem.text,
+            style: TextStyle(
+                color: textItem.color,
+                fontSize: 32,
+                fontWeight: FontWeight.bold)),
         textDirection: TextDirection.ltr,
       );
       textPainter.layout();
       textPainter.paint(canvas, textItem.position);
+    }
+  }
+
+  void _drawShape(Canvas canvas, Offset start, Offset end, Color color,
+      double width, DrawingTool tool) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = width
+      ..style = PaintingStyle.stroke;
+
+    if (tool == DrawingTool.arrow) {
+      canvas.drawLine(start, end, paint);
+      final angle = atan2(end.dy - start.dy, end.dx - start.dx);
+      const arrowSize = 25.0;
+      final path = Path()
+        ..moveTo(end.dx, end.dy)
+        ..lineTo(end.dx - arrowSize * cos(angle - pi / 6),
+            end.dy - arrowSize * sin(angle - pi / 6))
+        ..moveTo(end.dx, end.dy)
+        ..lineTo(end.dx - arrowSize * cos(angle + pi / 6),
+            end.dy - arrowSize * sin(angle + pi / 6));
+      canvas.drawPath(path, paint);
+    } else if (tool == DrawingTool.circle) {
+      final radius = (end - start).distance / 2;
+      final center =
+          Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+      canvas.drawCircle(center, radius, paint);
     }
   }
 

@@ -27,7 +27,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   final List<Offset> _signaturePoints = [];
   final Set<int> _selectedPhotos = {};
   int _reportNumber = 1;
-  bool _isSigningMode = false; // When true, scroll is locked for signing
+  bool _isSigningMode = false;
   final GlobalKey _signatureKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
 
@@ -51,7 +51,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         });
       }
     } catch (e) {
-      print('Error loading report number: $e');
+      debugPrint('Error loading report number: $e');
     }
   }
 
@@ -61,27 +61,32 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final counterFile = File('${directory.path}/report_counter.txt');
       await counterFile.writeAsString((_reportNumber + 1).toString());
     } catch (e) {
-      print('Error saving report number: $e');
+      debugPrint('Error saving report number: $e');
     }
   }
 
   String _getReportNumber() {
     final now = DateTime.now();
-    final months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'pa\u017a', 'lis', 'gru'];
+    final months = [
+      'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
+      'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'
+    ];
     return 'Nr ${_reportNumber.toString().padLeft(3, '0')}/${now.day}/${months[now.month - 1]}/${now.year}';
   }
 
   Future<void> _generatePdf() async {
-    if (_nameController.text.isEmpty || _projectController.text.isEmpty || _clientController.text.isEmpty) {
+    if (_nameController.text.isEmpty ||
+        _projectController.text.isEmpty ||
+        _clientController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wype\u0142nij imi\u0119/nazwisko, projekt i klienta')),
+        const SnackBar(content: Text('Wypełnij imię/nazwisko, projekt i klienta')),
       );
       return;
     }
 
     if (_selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wybierz przynajmniej jedno zdj\u0119cie')),
+        const SnackBar(content: Text('Wybierz przynajmniej jedno zdjęcie')),
       );
       return;
     }
@@ -103,10 +108,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final fontBoldData = await rootBundle.load('fonts/Roboto-Bold.ttf');
       final ttfBold = pw.Font.ttf(fontBoldData);
 
-      final theme = pw.ThemeData.withFont(
-        base: ttf,
-        bold: ttfBold,
-      );
+      final theme = pw.ThemeData.withFont(base: ttf, bold: ttfBold);
 
       pw.MemoryImage? signatureImage;
       if (_signaturePoints.isNotEmpty) {
@@ -116,7 +118,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final reportNum = _getReportNumber();
       final selectedPhotosList = _selectedPhotos.toList()..sort();
 
-      // Title page
       pdf.addPage(
         pw.Page(
           theme: theme,
@@ -126,25 +127,29 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
               children: [
                 pw.Image(logo, width: 200),
                 pw.SizedBox(height: 40),
-                pw.Text(
-                  'RAPORT Z DOKUMENTACJI',
-                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
-                ),
+                pw.Text('RAPORT Z DOKUMENTACJI',
+                    style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 20),
                 pw.Divider(),
                 pw.SizedBox(height: 20),
-                pw.Text(reportNum, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                pw.Text(reportNum,
+                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 10),
-                pw.Text('Projekt: ${_projectController.text}', style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Klient: ${_clientController.text}', style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Data sporz\u0105dzenia: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}',
+                pw.Text('Projekt: ${_projectController.text}',
                     style: const pw.TextStyle(fontSize: 16)),
                 pw.SizedBox(height: 10),
-                pw.Text('Sporz\u0105dzi\u0142: ${_nameController.text}', style: const pw.TextStyle(fontSize: 16)),
+                pw.Text('Klient: ${_clientController.text}',
+                    style: const pw.TextStyle(fontSize: 16)),
                 pw.SizedBox(height: 10),
-                pw.Text('Liczba zdj\u0119\u0107: ${selectedPhotosList.length}', style: const pw.TextStyle(fontSize: 16)),
+                pw.Text(
+                    'Data sporządzenia: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}',
+                    style: const pw.TextStyle(fontSize: 16)),
+                pw.SizedBox(height: 10),
+                pw.Text('Sporządził: ${_nameController.text}',
+                    style: const pw.TextStyle(fontSize: 16)),
+                pw.SizedBox(height: 10),
+                pw.Text('Liczba zdjęć: ${selectedPhotosList.length}',
+                    style: const pw.TextStyle(fontSize: 16)),
                 pw.Spacer(),
                 _buildFooter(),
               ],
@@ -153,7 +158,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         ),
       );
 
-      // Photo pages
       for (int i = 0; i < selectedPhotosList.length; i++) {
         final photoIndex = selectedPhotosList[i];
         final photo = widget.photos[photoIndex];
@@ -173,16 +177,15 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text('Zdj\u0119cie ${i + 1}/${selectedPhotosList.length}',
+                      pw.Text('Zdjęcie ${i + 1}/${selectedPhotosList.length}',
                           style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                      pw.Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                      pw.Text(
+                          '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
                           style: const pw.TextStyle(fontSize: 12)),
                     ],
                   ),
                   pw.SizedBox(height: 10),
-                  pw.Expanded(
-                    child: pw.Image(image, fit: pw.BoxFit.contain),
-                  ),
+                  pw.Expanded(child: pw.Image(image, fit: pw.BoxFit.contain)),
                   pw.SizedBox(height: 10),
                   if (photo.description.isNotEmpty) ...[
                     pw.Text('Opis:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
@@ -190,9 +193,11 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     pw.SizedBox(height: 5),
                   ],
                   if (photo.hasLocation()) ...[
-                    pw.Text('Lokalizacja GPS:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Lokalizacja GPS:',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     pw.UrlLink(
-                      destination: 'https://maps.google.com/?q=${photo.latitude},${photo.longitude}',
+                      destination:
+                          'https://maps.google.com/?q=${photo.latitude},${photo.longitude}',
                       child: pw.Text(
                         '${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
                         style: const pw.TextStyle(color: PdfColors.blue),
@@ -208,7 +213,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         );
       }
 
-      // Summary page
       pdf.addPage(
         pw.Page(
           theme: theme,
@@ -216,14 +220,16 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('PODSUMOWANIE', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text('PODSUMOWANIE',
+                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 20),
                 if (_summaryController.text.isNotEmpty) ...[
                   pw.Text(_summaryController.text),
                   pw.SizedBox(height: 30),
                 ],
                 pw.Spacer(),
-                pw.Text('Podpis sporz\u0105dzaj\u0105cego:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                pw.Text('Podpis sporządzającego:',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 10),
                 if (signatureImage != null)
                   pw.Container(
@@ -240,7 +246,8 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                   ),
                 pw.SizedBox(height: 10),
                 pw.Text('${_nameController.text}'),
-                pw.Text('Data: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}'),
+                pw.Text(
+                    'Data: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}'),
                 pw.Spacer(),
                 _buildFooter(),
               ],
@@ -250,7 +257,8 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       );
 
       final directory = await getApplicationDocumentsDirectory();
-      final pdfPath = '${directory.path}/raport_${_reportNumber.toString().padLeft(3, '0')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final pdfPath =
+          '${directory.path}/raport_${_reportNumber.toString().padLeft(3, '0')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
       final file = File(pdfPath);
       await file.writeAsBytes(await pdf.save());
 
@@ -269,14 +277,22 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('B\u0142\u0105d generowania PDF: $e')),
+          SnackBar(content: Text('Błąd generowania PDF: $e')),
         );
       }
     }
   }
 
-
   Future<void> _archiveAndSend() async {
+    if (_nameController.text.isEmpty ||
+        _projectController.text.isEmpty ||
+        _clientController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wypełnij dane przed wysłaniem do chmury')),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -284,10 +300,11 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         content: Row(children: [
           CircularProgressIndicator(),
           SizedBox(width: 20),
-          Text('Wysyłanie...'),
+          Text('Wysyłanie do chmury...'),
         ]),
       ),
     );
+
     try {
       final directory = await getApplicationDocumentsDirectory();
       final allFiles = Directory(directory.path)
@@ -296,13 +313,15 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
           .where((f) => f.path.endsWith('.pdf'))
           .toList();
       allFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+
       if (allFiles.isEmpty) {
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Najpierw wygeneruj PDF')),
+          const SnackBar(content: Text('Najpierw wygeneruj PDF (przycisk PDF)')),
         );
         return;
       }
+
       final pdfFile = allFiles.first;
       final fileName = pdfFile.path.split(Platform.pathSeparator).last;
 
@@ -325,20 +344,26 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✓ Wysłano do Drive i Sheets!')),
+          const SnackBar(
+            content: Row(children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Wysłano do Drive i Sheets!'),
+            ]),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd: $e')),
+          SnackBar(content: Text('Błąd wysyłania: $e')),
         );
       }
     }
   }
 
-  // ===== FOOTER - ONLY BABICE NOWE =====
   pw.Widget _buildFooter() {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 10),
@@ -348,30 +373,35 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('Biuro Warszawa/Babice Nowe:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-          pw.Text('ul. Ogrodnicza 76, 05-082 Babice Nowe', style: const pw.TextStyle(fontSize: 8)),
-          pw.Text('b.drabicki@interklima.pl  |  kom. Bart\u0142omiej Drabicki 608 651 538', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text('Biuro Warszawa/Babice Nowe:',
+              style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+          pw.Text('ul. Ogrodnicza 76, 05-082 Babice Nowe',
+              style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+              'b.drabicki@interklima.pl  |  kom. Bartłomiej Drabicki 608 651 538',
+              style: const pw.TextStyle(fontSize: 8)),
         ],
       ),
     );
   }
 
   Future<pw.MemoryImage> _createSignatureImage() async {
-    final RenderBox? renderBox = _signatureKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _signatureKey.currentContext?.findRenderObject() as RenderBox?;
     final padWidth = renderBox?.size.width ?? 300.0;
     final padHeight = renderBox?.size.height ?? 200.0;
 
-    final pdfWidth = 300.0;
-    final pdfHeight = 100.0;
+    const pdfWidth = 300.0;
+    const pdfHeight = 100.0;
 
     final scaleX = pdfWidth / padWidth;
     final scaleY = pdfHeight / padHeight;
 
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
+    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
 
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
+      const Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
       Paint()..color = const Color(0xFFFFFFFF),
     );
 
@@ -381,9 +411,12 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < _signaturePoints.length - 1; i++) {
-      if (_signaturePoints[i] != Offset.zero && _signaturePoints[i + 1] != Offset.zero) {
-        final scaledStart = Offset(_signaturePoints[i].dx * scaleX, _signaturePoints[i].dy * scaleY);
-        final scaledEnd = Offset(_signaturePoints[i + 1].dx * scaleX, _signaturePoints[i + 1].dy * scaleY);
+      if (_signaturePoints[i] != Offset.zero &&
+          _signaturePoints[i + 1] != Offset.zero) {
+        final scaledStart = Offset(
+            _signaturePoints[i].dx * scaleX, _signaturePoints[i].dy * scaleY);
+        final scaledEnd = Offset(_signaturePoints[i + 1].dx * scaleX,
+            _signaturePoints[i + 1].dy * scaleY);
         canvas.drawLine(scaledStart, scaledEnd, paint);
       }
     }
@@ -394,12 +427,8 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     return pw.MemoryImage(byteData!.buffer.asUint8List());
   }
 
-  // Toggle signing mode - locks scroll so user can draw signature
   void _enterSigningMode() {
-    setState(() {
-      _isSigningMode = true;
-    });
-    // Scroll to signature area
+    setState(() => _isSigningMode = true);
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_signatureKey.currentContext != null) {
         Scrollable.ensureVisible(
@@ -411,11 +440,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     });
   }
 
-  void _exitSigningMode() {
-    setState(() {
-      _isSigningMode = false;
-    });
-  }
+  void _exitSigningMode() => setState(() => _isSigningMode = false);
 
   @override
   void dispose() {
@@ -430,7 +455,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ===== CLEAN TOP BAR - NO BLUE =====
       appBar: AppBar(
         title: const Text('Raport PDF'),
         backgroundColor: Colors.grey[900],
@@ -443,15 +467,17 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             onPressed: _archiveAndSend,
           ),
           IconButton(
-            icon: const Icon(Icons.check),
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Generuj PDF',
             onPressed: _generatePdf,
           ),
         ],
       ),
       body: SingleChildScrollView(
         controller: _scrollController,
-        // Block scroll when signing
-        physics: _isSigningMode ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+        physics: _isSigningMode
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,11 +486,10 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
 
-            // ===== FORM FIELDS - CLEAN, NO BLUE =====
             TextField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: 'Imi\u0119 i nazwisko *',
+                labelText: 'Imię i nazwisko *',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -511,8 +536,8 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ===== PHOTO SELECTION =====
-            const Text('Wybierz zdj\u0119cia:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text('Wybierz zdjęcia:',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...List.generate(widget.photos.length, (index) {
               final photo = widget.photos[index];
@@ -529,23 +554,26 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     }
                   });
                 },
-                title: Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}'),
-                subtitle: Text(photo.description.isEmpty ? 'Bez opisu' : photo.description),
+                title: Text(
+                    '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}'),
+                subtitle: Text(
+                    photo.description.isEmpty ? 'Bez opisu' : photo.description),
                 secondary: File(photo.imagePath).existsSync()
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(File(photo.imagePath), width: 60, height: 60, fit: BoxFit.cover),
+                        child: Image.file(File(photo.imagePath),
+                            width: 60, height: 60, fit: BoxFit.cover),
                       )
                     : null,
               );
             }),
             const SizedBox(height: 24),
 
-            // ===== SIGNATURE SECTION =====
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Podpis cyfrowy:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('Podpis cyfrowy:',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 if (!_isSigningMode)
                   TextButton.icon(
                     onPressed: _enterSigningMode,
@@ -557,7 +585,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Info banner when not in signing mode
             if (!_isSigningMode && _signaturePoints.isEmpty)
               Container(
                 key: _signatureKey,
@@ -573,14 +600,13 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     children: [
                       Icon(Icons.draw, color: Colors.grey, size: 32),
                       SizedBox(height: 8),
-                      Text('Kliknij "Podpisz" aby z\u0142o\u017cy\u0107 podpis',
+                      Text('Kliknij "Podpisz" aby złożyć podpis',
                           style: TextStyle(color: Colors.grey)),
                     ],
                   ),
                 ),
               ),
 
-            // Show locked signature preview
             if (!_isSigningMode && _signaturePoints.isNotEmpty)
               Container(
                 key: _signatureKey,
@@ -605,7 +631,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 ),
               ),
 
-            // ===== SIGNING MODE - FULL DRAWING AREA =====
             if (_isSigningMode) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -623,8 +648,11 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Ekran zablokowany - pisz palcem po polu poni\u017cej',
-                        style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
+                        'Ekran zablokowany - pisz palcem po polu poniżej',
+                        style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -643,21 +671,12 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 ),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onPanStart: (details) {
-                    setState(() {
-                      _signaturePoints.add(details.localPosition);
-                    });
-                  },
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _signaturePoints.add(details.localPosition);
-                    });
-                  },
-                  onPanEnd: (details) {
-                    setState(() {
-                      _signaturePoints.add(Offset.zero);
-                    });
-                  },
+                  onPanStart: (details) =>
+                      setState(() => _signaturePoints.add(details.localPosition)),
+                  onPanUpdate: (details) =>
+                      setState(() => _signaturePoints.add(details.localPosition)),
+                  onPanEnd: (details) =>
+                      setState(() => _signaturePoints.add(Offset.zero)),
                   child: CustomPaint(
                     painter: SignaturePainter(_signaturePoints),
                     size: Size.infinite,
@@ -669,55 +688,52 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _signaturePoints.clear();
-                      });
-                    },
+                    onPressed: () => setState(() => _signaturePoints.clear()),
                     icon: const Icon(Icons.clear, size: 18),
-                    label: const Text('Wyczy\u015b\u0107'),
+                    label: const Text('Wyczyść'),
                     style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                   Row(
                     children: [
                       OutlinedButton(
-                        onPressed: () {
-                          setState(() {
-                            _signaturePoints.clear();
-                            _isSigningMode = false;
-                          });
-                        },
+                        onPressed: () => setState(() {
+                          _signaturePoints.clear();
+                          _isSigningMode = false;
+                        }),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.grey[700],
                           side: BorderSide(color: Colors.grey[400]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                         child: const Text('Anuluj'),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
-                        onPressed: _signaturePoints.isEmpty ? null : () {
-                          _exitSigningMode();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Row(
-                                children: [
-                                  Icon(Icons.check_circle, color: Colors.white),
-                                  SizedBox(width: 8),
-                                  Text('Podpis zapisany'),
-                                ],
-                              ),
-                              duration: Duration(seconds: 2),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
+                        onPressed: _signaturePoints.isEmpty
+                            ? null
+                            : () {
+                                _exitSigningMode();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Row(children: [
+                                      Icon(Icons.check_circle,
+                                          color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Text('Podpis zapisany'),
+                                    ]),
+                                    duration: Duration(seconds: 2),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              },
                         icon: const Icon(Icons.check, size: 18),
-                        label: const Text('Zatwierd\u017a'),
+                        label: const Text('Zatwierdź'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[700],
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ],
@@ -726,7 +742,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
               ),
             ],
 
-            // Show "Popraw podpis" when signature exists and not in signing mode
             if (!_isSigningMode && _signaturePoints.isNotEmpty) ...[
               const SizedBox(height: 8),
               Row(
@@ -734,14 +749,13 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 children: [
                   TextButton.icon(
                     onPressed: () {
-                      setState(() {
-                        _signaturePoints.clear();
-                      });
+                      setState(() => _signaturePoints.clear());
                       _enterSigningMode();
                     },
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Popraw podpis'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+                    style:
+                        TextButton.styleFrom(foregroundColor: Colors.grey[700]),
                   ),
                   ElevatedButton.icon(
                     onPressed: _generatePdf,
@@ -750,8 +764,10 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.grey[900],
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ],

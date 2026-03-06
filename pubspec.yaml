@@ -37,6 +37,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/service_account.json
   fonts:
     - family: Roboto
       fonts:
