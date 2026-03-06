@@ -7,6 +7,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
 import '../models/photo_data.dart';
+import '../services/google_drive_service.dart';
+import '../services/google_sheets_service.dart';
 
 class PdfReportScreen extends StatefulWidget {
   final List<PhotoData> photos;
@@ -25,9 +27,12 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   final List<Offset> _signaturePoints = [];
   final Set<int> _selectedPhotos = {};
   int _reportNumber = 1;
-  bool _isSigningMode = false; // When true, scroll is locked for signing
+  bool _isSigningMode = false;
+  bool _isArchiving = false;
   final GlobalKey _signatureKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
+  File? _generatedPdfFile;
+  String? _lastReportNum;
 
   @override
   void initState() {
@@ -44,9 +49,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final counterFile = File('${directory.path}/report_counter.txt');
       if (await counterFile.exists()) {
         final content = await counterFile.readAsString();
-        setState(() {
-          _reportNumber = int.tryParse(content) ?? 1;
-        });
+        setState(() => _reportNumber = int.tryParse(content) ?? 1);
       }
     } catch (e) {
       print('Error loading report number: $e');
@@ -65,46 +68,56 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
   String _getReportNumber() {
     final now = DateTime.now();
-    final months = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'pa\u017a', 'lis', 'gru'];
+    final months = [
+      'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
+      'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'
+    ];
     return 'Nr ${_reportNumber.toString().padLeft(3, '0')}/${now.day}/${months[now.month - 1]}/${now.year}';
   }
 
-  Future<void> _generatePdf() async {
-    if (_nameController.text.isEmpty || _projectController.text.isEmpty || _clientController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wype\u0142nij imi\u0119/nazwisko, projekt i klienta')),
-      );
-      return;
+  // Collect unique floor info from selected photos
+  String _getFloorInfo() {
+    final selectedList = _selectedPhotos.toList()..sort();
+    final floors = <String>{};
+    for (final i in selectedList) {
+      final photo = widget.photos[i];
+      if (photo.floorLabel != null) floors.add(photo.floorLabel!);
+    }
+    return floors.isEmpty ? '' : floors.join(', ');
+  }
+
+  Future<File?> _generatePdf({bool silent = false}) async {
+    if (_nameController.text.isEmpty ||
+        _projectController.text.isEmpty ||
+        _clientController.text.isEmpty) {
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Wypełnij imię/nazwisko, projekt i klienta')),
+        );
+      }
+      return null;
     }
 
     if (_selectedPhotos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wybierz przynajmniej jedno zdj\u0119cie')),
-      );
-      return;
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wybierz przynajmniej jedno zdjęcie')),
+        );
+      }
+      return null;
     }
 
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
       final pdf = pw.Document();
       final logoData = await rootBundle.load('assets/logo.png');
-      final logoBytes = logoData.buffer.asUint8List();
-      final logo = pw.MemoryImage(logoBytes);
+      final logo = pw.MemoryImage(logoData.buffer.asUint8List());
 
       final fontData = await rootBundle.load('fonts/Roboto-Regular.ttf');
       final ttf = pw.Font.ttf(fontData);
       final fontBoldData = await rootBundle.load('fonts/Roboto-Bold.ttf');
       final ttfBold = pw.Font.ttf(fontBoldData);
-
-      final theme = pw.ThemeData.withFont(
-        base: ttf,
-        bold: ttfBold,
-      );
+      final theme = pw.ThemeData.withFont(base: ttf, bold: ttfBold);
 
       pw.MemoryImage? signatureImage;
       if (_signaturePoints.isNotEmpty) {
@@ -112,203 +125,426 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       }
 
       final reportNum = _getReportNumber();
+      _lastReportNum = reportNum;
       final selectedPhotosList = _selectedPhotos.toList()..sort();
+      final now = DateTime.now();
 
       // Title page
-      pdf.addPage(
-        pw.Page(
-          theme: theme,
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Image(logo, width: 200),
-                pw.SizedBox(height: 40),
-                pw.Text(
-                  'RAPORT Z DOKUMENTACJI',
-                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
-                ),
-                pw.SizedBox(height: 20),
-                pw.Divider(),
-                pw.SizedBox(height: 20),
-                pw.Text(reportNum, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 10),
-                pw.Text('Projekt: ${_projectController.text}', style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Klient: ${_clientController.text}', style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Data sporz\u0105dzenia: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}',
-                    style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Sporz\u0105dzi\u0142: ${_nameController.text}', style: const pw.TextStyle(fontSize: 16)),
-                pw.SizedBox(height: 10),
-                pw.Text('Liczba zdj\u0119\u0107: ${selectedPhotosList.length}', style: const pw.TextStyle(fontSize: 16)),
-                pw.Spacer(),
-                _buildFooter(),
-              ],
-            );
-          },
+      pdf.addPage(pw.Page(
+        theme: theme,
+        build: (pw.Context ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Image(logo, width: 200),
+            pw.SizedBox(height: 40),
+            pw.Text('RAPORT Z DOKUMENTACJI',
+                style: pw.TextStyle(
+                    fontSize: 24, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 20),
+            pw.Divider(),
+            pw.SizedBox(height: 20),
+            pw.Text(reportNum,
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            pw.Text('Projekt: ${_projectController.text}',
+                style: const pw.TextStyle(fontSize: 16)),
+            pw.SizedBox(height: 8),
+            pw.Text('Klient: ${_clientController.text}',
+                style: const pw.TextStyle(fontSize: 16)),
+            pw.SizedBox(height: 8),
+            pw.Text(
+                'Data sporządzenia: ${now.day}.${now.month}.${now.year}',
+                style: const pw.TextStyle(fontSize: 16)),
+            pw.SizedBox(height: 8),
+            pw.Text('Sporządził: ${_nameController.text}',
+                style: const pw.TextStyle(fontSize: 16)),
+            pw.SizedBox(height: 8),
+            pw.Text(
+                'Liczba zdjęć: ${selectedPhotosList.length}',
+                style: const pw.TextStyle(fontSize: 16)),
+            // V9: Floor info on title page
+            if (_getFloorInfo().isNotEmpty) ...[
+              pw.SizedBox(height: 8),
+              pw.Text('Kondygnacje: ${_getFloorInfo()}',
+                  style: const pw.TextStyle(fontSize: 16)),
+            ],
+            pw.Spacer(),
+            _buildFooter(),
+          ],
         ),
-      );
+      ));
 
       // Photo pages
       for (int i = 0; i < selectedPhotosList.length; i++) {
         final photoIndex = selectedPhotosList[i];
         final photo = widget.photos[photoIndex];
-        final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
-
-        final imageFile = File(photo.imagePath);
-        final imageBytes = await imageFile.readAsBytes();
+        final date =
+            DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
+        final imageBytes =
+            await File(photo.imagePath).readAsBytes();
         final image = pw.MemoryImage(imageBytes);
 
-        pdf.addPage(
-          pw.Page(
-            theme: theme,
-            build: (pw.Context context) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
+        pdf.addPage(pw.Page(
+          theme: theme,
+          build: (pw.Context ctx) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Zdj\u0119cie ${i + 1}/${selectedPhotosList.length}',
-                          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                      pw.Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
-                          style: const pw.TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                  pw.SizedBox(height: 10),
-                  pw.Expanded(
-                    child: pw.Image(image, fit: pw.BoxFit.contain),
-                  ),
-                  pw.SizedBox(height: 10),
-                  if (photo.description.isNotEmpty) ...[
-                    pw.Text('Opis:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    pw.Text(photo.description),
-                    pw.SizedBox(height: 5),
-                  ],
-                  if (photo.hasLocation()) ...[
-                    pw.Text('Lokalizacja GPS:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    pw.UrlLink(
-                      destination: 'https://maps.google.com/?q=${photo.latitude},${photo.longitude}',
-                      child: pw.Text(
-                        '${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
-                        style: const pw.TextStyle(color: PdfColors.blue),
-                      ),
-                    ),
-                  ],
-                  pw.Spacer(),
-                  _buildFooter(),
+                  pw.Text(
+                      'Zdjęcie ${i + 1}/${selectedPhotosList.length}',
+                      style: pw.TextStyle(
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                      '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}',
+                      style: const pw.TextStyle(fontSize: 12)),
                 ],
-              );
-            },
+              ),
+              pw.SizedBox(height: 10),
+              pw.Expanded(
+                  child: pw.Image(image, fit: pw.BoxFit.contain)),
+              pw.SizedBox(height: 10),
+              if (photo.description.isNotEmpty) ...[
+                pw.Text('Opis:',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold)),
+                pw.Text(photo.description),
+                pw.SizedBox(height: 5),
+              ],
+              // V9: Floor info in photo page
+              if (photo.floorLabel != null) ...[
+                pw.Text('Kondygnacja:',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold)),
+                pw.Text(
+                    '${photo.floorLabel}${photo.relativeHeight != null ? ' (${photo.relativeHeight! >= 0 ? '+' : ''}${photo.relativeHeight!.toStringAsFixed(2)}m)' : ''}'),
+                pw.SizedBox(height: 5),
+              ],
+              if (photo.hasLocation()) ...[
+                pw.Text('Lokalizacja GPS:',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold)),
+                pw.UrlLink(
+                  destination:
+                      'https://maps.google.com/?q=${photo.latitude},${photo.longitude}',
+                  child: pw.Text(
+                    '${photo.latitude!.toStringAsFixed(6)}, ${photo.longitude!.toStringAsFixed(6)}',
+                    style:
+                        const pw.TextStyle(color: PdfColors.blue),
+                  ),
+                ),
+              ],
+              if (photo.altitude != null) ...[
+                pw.SizedBox(height: 3),
+                pw.Text(
+                    'Wysokość n.p.m.: ${photo.altitude!.toStringAsFixed(1)}m',
+                    style: const pw.TextStyle(
+                        fontSize: 10, color: PdfColors.grey700)),
+              ],
+              pw.Spacer(),
+              _buildFooter(),
+            ],
           ),
-        );
+        ));
       }
 
       // Summary page
-      pdf.addPage(
-        pw.Page(
-          theme: theme,
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('PODSUMOWANIE', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 20),
-                if (_summaryController.text.isNotEmpty) ...[
-                  pw.Text(_summaryController.text),
-                  pw.SizedBox(height: 30),
-                ],
-                pw.Spacer(),
-                pw.Text('Podpis sporz\u0105dzaj\u0105cego:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 10),
-                if (signatureImage != null)
-                  pw.Container(
-                    height: 100,
-                    width: 300,
-                    decoration: pw.BoxDecoration(border: pw.Border.all()),
-                    child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
-                  )
-                else
-                  pw.Container(
-                    height: 100,
-                    width: 300,
-                    decoration: pw.BoxDecoration(border: pw.Border.all()),
-                  ),
-                pw.SizedBox(height: 10),
-                pw.Text('${_nameController.text}'),
-                pw.Text('Data: ${DateTime.now().day}.${DateTime.now().month}.${DateTime.now().year}'),
-                pw.Spacer(),
-                _buildFooter(),
-              ],
-            );
-          },
+      pdf.addPage(pw.Page(
+        theme: theme,
+        build: (pw.Context ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('PODSUMOWANIE',
+                style: pw.TextStyle(
+                    fontSize: 18, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 20),
+            if (_summaryController.text.isNotEmpty) ...[
+              pw.Text(_summaryController.text),
+              pw.SizedBox(height: 30),
+            ],
+            pw.Spacer(),
+            pw.Text('Podpis sporządzającego:',
+                style:
+                    pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 10),
+            if (signatureImage != null)
+              pw.Container(
+                height: 100,
+                width: 300,
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all()),
+                child: pw.Image(signatureImage,
+                    fit: pw.BoxFit.contain),
+              )
+            else
+              pw.Container(
+                height: 100,
+                width: 300,
+                decoration: pw.BoxDecoration(
+                    border: pw.Border.all()),
+              ),
+            pw.SizedBox(height: 10),
+            pw.Text(_nameController.text),
+            pw.Text(
+                'Data: ${now.day}.${now.month}.${now.year}'),
+            pw.Spacer(),
+            _buildFooter(),
+          ],
+        ),
+      ));
+
+      final directory = await getApplicationDocumentsDirectory();
+      final pdfPath =
+          '${directory.path}/raport_${_reportNumber.toString().padLeft(3, '0')}_${now.millisecondsSinceEpoch}.pdf';
+      final file = File(pdfPath);
+      await file.writeAsBytes(await pdf.save());
+      await _saveReportNumber();
+
+      return file;
+    } catch (e) {
+      print('Error generating PDF: $e');
+      return null;
+    }
+  }
+
+  Future<void> _generateAndShare() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) =>
+          const Center(child: CircularProgressIndicator()),
+    );
+
+    final file = await _generatePdf();
+
+    if (mounted) Navigator.pop(context);
+
+    if (file == null) return;
+
+    setState(() => _generatedPdfFile = file);
+
+    if (mounted) {
+      Navigator.pop(context);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject:
+            'Raport Interklima ${_lastReportNum ?? ''} - ${_projectController.text}',
+      );
+    }
+  }
+
+  // V9: Archiwizuj i wyślij - Upload to Drive + add row to Sheets
+  Future<void> _archiveAndSend() async {
+    if (_nameController.text.isEmpty ||
+        _projectController.text.isEmpty ||
+        _clientController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content:
+                Text('Wypełnij imię/nazwisko, projekt i klienta')),
+      );
+      return;
+    }
+
+    setState(() => _isArchiving = true);
+
+    try {
+      // Step 1: Generate PDF
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Generowanie PDF...'),
+            ],
+          ),
         ),
       );
 
-      final directory = await getApplicationDocumentsDirectory();
-      final pdfPath = '${directory.path}/raport_${_reportNumber.toString().padLeft(3, '0')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
-      final file = File(pdfPath);
-      await file.writeAsBytes(await pdf.save());
+      final pdfFile = await _generatePdf(silent: true);
+      if (mounted) Navigator.pop(context);
 
-      await _saveReportNumber();
+      if (pdfFile == null) {
+        setState(() => _isArchiving = false);
+        return;
+      }
+
+      // Step 2: Upload to Google Drive
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Wysyłanie na Google Drive...'),
+            ],
+          ),
+        ),
+      );
+
+      final selectedPhotosList = _selectedPhotos.toList()..sort();
+      final photos = selectedPhotosList
+          .map((i) => File(widget.photos[i].imagePath))
+          .where((f) => f.existsSync())
+          .toList();
+
+      final driveResult = await GoogleDriveService.uploadReport(
+        pdfFile: pdfFile,
+        reportNumber: _lastReportNum ?? _getReportNumber(),
+        projectName: _projectController.text,
+        clientName: _clientController.text,
+        photos: photos,
+      );
+
+      if (mounted) Navigator.pop(context);
+
+      // Step 3: Add row to Google Sheets
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Dodawanie do arkusza...'),
+            ],
+          ),
+        ),
+      );
+
+      final now = DateTime.now();
+      final date =
+          '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year}';
+
+      await GoogleSheetsService.addReportRow(
+        date: date,
+        reportNumber: _lastReportNum ?? _getReportNumber(),
+        project: _projectController.text,
+        client: _clientController.text,
+        createdBy: _nameController.text,
+        photoCount: selectedPhotosList.length,
+        pdfLink: driveResult['pdfLink'],
+        sessionLink: driveResult['sessionLink'],
+        floorInfo: _getFloorInfo(),
+      );
+
+      if (mounted) Navigator.pop(context);
+
+      setState(() => _isArchiving = false);
 
       if (mounted) {
-        Navigator.pop(context);
-        Navigator.pop(context);
-
-        await Share.shareXFiles(
-          [XFile(pdfPath)],
-          subject: 'Raport Interklima $reportNum - ${_projectController.text}',
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Zarchiwizowano!'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (driveResult['pdfLink'] != null)
+                  Text('✅ PDF: Google Drive',
+                      style: TextStyle(color: Colors.green[700])),
+                if (driveResult['sessionLink'] != null)
+                  Text('✅ Zdjęcia: Google Drive',
+                      style: TextStyle(color: Colors.green[700])),
+                const Text('✅ Wiersz: Google Sheets',
+                    style: TextStyle(color: Colors.green)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await Share.shareXFiles(
+                    [XFile(pdfFile.path)],
+                    subject:
+                        'Raport Interklima ${_lastReportNum ?? ''} - ${_projectController.text}',
+                  );
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('Udostępnij PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey[900],
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('B\u0142\u0105d generowania PDF: $e')),
+          SnackBar(content: Text('Błąd archiwizacji: $e')),
         );
       }
+      setState(() => _isArchiving = false);
     }
   }
 
-  // ===== FOOTER - ONLY BABICE NOWE =====
   pw.Widget _buildFooter() {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 10),
       decoration: const pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey400)),
+        border: pw.Border(
+            top: pw.BorderSide(color: PdfColors.grey400)),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('Biuro Warszawa/Babice Nowe:', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
-          pw.Text('ul. Ogrodnicza 76, 05-082 Babice Nowe', style: const pw.TextStyle(fontSize: 8)),
-          pw.Text('b.drabicki@interklima.pl  |  kom. Bart\u0142omiej Drabicki 608 651 538', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text('Biuro Warszawa/Babice Nowe:',
+              style: pw.TextStyle(
+                  fontSize: 8, fontWeight: pw.FontWeight.bold)),
+          pw.Text(
+              'ul. Ogrodnicza 76, 05-082 Babice Nowe',
+              style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+              'b.drabicki@interklima.pl  |  kom. Bartłomiej Drabicki 608 651 538',
+              style: const pw.TextStyle(fontSize: 8)),
         ],
       ),
     );
   }
 
   Future<pw.MemoryImage> _createSignatureImage() async {
-    final RenderBox? renderBox = _signatureKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox = _signatureKey.currentContext
+        ?.findRenderObject() as RenderBox?;
     final padWidth = renderBox?.size.width ?? 300.0;
     final padHeight = renderBox?.size.height ?? 200.0;
-
-    final pdfWidth = 300.0;
-    final pdfHeight = 100.0;
-
+    const pdfWidth = 300.0;
+    const pdfHeight = 100.0;
     final scaleX = pdfWidth / padWidth;
     final scaleY = pdfHeight / padHeight;
 
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
-
+    final canvas =
+        Canvas(recorder, const Rect.fromLTWH(0, 0, pdfWidth, pdfHeight));
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
-      Paint()..color = const Color(0xFFFFFFFF),
-    );
+        const Rect.fromLTWH(0, 0, pdfWidth, pdfHeight),
+        Paint()..color = const Color(0xFFFFFFFF));
 
     final paint = Paint()
       ..color = const Color(0xFF000000)
@@ -316,41 +552,38 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       ..strokeCap = StrokeCap.round;
 
     for (int i = 0; i < _signaturePoints.length - 1; i++) {
-      if (_signaturePoints[i] != Offset.zero && _signaturePoints[i + 1] != Offset.zero) {
-        final scaledStart = Offset(_signaturePoints[i].dx * scaleX, _signaturePoints[i].dy * scaleY);
-        final scaledEnd = Offset(_signaturePoints[i + 1].dx * scaleX, _signaturePoints[i + 1].dy * scaleY);
-        canvas.drawLine(scaledStart, scaledEnd, paint);
+      if (_signaturePoints[i] != Offset.zero &&
+          _signaturePoints[i + 1] != Offset.zero) {
+        canvas.drawLine(
+          Offset(_signaturePoints[i].dx * scaleX,
+              _signaturePoints[i].dy * scaleY),
+          Offset(_signaturePoints[i + 1].dx * scaleX,
+              _signaturePoints[i + 1].dy * scaleY),
+          paint,
+        );
       }
     }
 
     final picture = recorder.endRecording();
-    final img = await picture.toImage(pdfWidth.toInt(), pdfHeight.toInt());
-    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    final img = await picture.toImage(
+        pdfWidth.toInt(), pdfHeight.toInt());
+    final byteData =
+        await img.toByteData(format: ui.ImageByteFormat.png);
     return pw.MemoryImage(byteData!.buffer.asUint8List());
   }
 
-  // Toggle signing mode - locks scroll so user can draw signature
   void _enterSigningMode() {
-    setState(() {
-      _isSigningMode = true;
-    });
-    // Scroll to signature area
+    setState(() => _isSigningMode = true);
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_signatureKey.currentContext != null) {
-        Scrollable.ensureVisible(
-          _signatureKey.currentContext!,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
+        Scrollable.ensureVisible(_signatureKey.currentContext!,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut);
       }
     });
   }
 
-  void _exitSigningMode() {
-    setState(() {
-      _isSigningMode = false;
-    });
-  }
+  void _exitSigningMode() => setState(() => _isSigningMode = false);
 
   @override
   void dispose() {
@@ -365,7 +598,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ===== CLEAN TOP BAR - NO BLUE =====
       appBar: AppBar(
         title: const Text('Raport PDF'),
         backgroundColor: Colors.grey[900],
@@ -373,80 +605,46 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: _generatePdf,
+            icon: const Icon(Icons.share),
+            tooltip: 'Generuj i udostępnij',
+            onPressed: _generateAndShare,
           ),
         ],
       ),
       body: SingleChildScrollView(
         controller: _scrollController,
-        // Block scroll when signing
-        physics: _isSigningMode ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+        physics: _isSigningMode
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Numer raportu: ${_getReportNumber()}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
 
-            // ===== FORM FIELDS - CLEAN, NO BLUE =====
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Imi\u0119 i nazwisko *',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.black87, width: 2),
-                ),
-              ),
-            ),
+            // Form fields
+            _buildTextField(_nameController, 'Imię i nazwisko *'),
             const SizedBox(height: 16),
-            TextField(
-              controller: _projectController,
-              decoration: InputDecoration(
-                labelText: 'Nazwa projektu *',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.black87, width: 2),
-                ),
-              ),
-            ),
+            _buildTextField(_projectController, 'Nazwa projektu *'),
             const SizedBox(height: 16),
-            TextField(
-              controller: _clientController,
-              decoration: InputDecoration(
-                labelText: 'Klient *',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.black87, width: 2),
-                ),
-              ),
-            ),
+            _buildTextField(_clientController, 'Klient *'),
             const SizedBox(height: 16),
-            TextField(
-              controller: _summaryController,
-              decoration: InputDecoration(
-                labelText: 'Podsumowanie (opcjonalne)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Colors.black87, width: 2),
-                ),
-              ),
-              maxLines: 4,
-            ),
+            _buildTextField(_summaryController, 'Podsumowanie (opcjonalne)',
+                maxLines: 4),
             const SizedBox(height: 24),
 
-            // ===== PHOTO SELECTION =====
-            const Text('Wybierz zdj\u0119cia:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            // Photo selection
+            const Text('Wybierz zdjęcia:',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...List.generate(widget.photos.length, (index) {
               final photo = widget.photos[index];
-              final date = DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
+              final date =
+                  DateTime.fromMillisecondsSinceEpoch(photo.timestamp);
               return CheckboxListTile(
                 value: _selectedPhotos.contains(index),
                 activeColor: Colors.black87,
@@ -459,35 +657,59 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     }
                   });
                 },
-                title: Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}'),
-                subtitle: Text(photo.description.isEmpty ? 'Bez opisu' : photo.description),
+                title: Text(
+                    '${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(photo.description.isEmpty
+                        ? 'Bez opisu'
+                        : photo.description),
+                    // V9: Show floor info in checkbox
+                    if (photo.floorLabel != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.layers,
+                              size: 12, color: Colors.blue),
+                          const SizedBox(width: 4),
+                          Text(photo.floorLabel!,
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.blue)),
+                        ],
+                      ),
+                  ],
+                ),
                 secondary: File(photo.imagePath).existsSync()
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(File(photo.imagePath), width: 60, height: 60, fit: BoxFit.cover),
+                        child: Image.file(File(photo.imagePath),
+                            width: 60, height: 60, fit: BoxFit.cover),
                       )
                     : null,
               );
             }),
+
             const SizedBox(height: 24),
 
-            // ===== SIGNATURE SECTION =====
+            // Signature section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Podpis cyfrowy:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('Podpis cyfrowy:',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
                 if (!_isSigningMode)
                   TextButton.icon(
                     onPressed: _enterSigningMode,
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Podpisz'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.black87),
+                    style: TextButton.styleFrom(
+                        foregroundColor: Colors.black87),
                   ),
               ],
             ),
             const SizedBox(height: 8),
 
-            // Info banner when not in signing mode
             if (!_isSigningMode && _signaturePoints.isEmpty)
               Container(
                 key: _signatureKey,
@@ -503,14 +725,13 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                     children: [
                       Icon(Icons.draw, color: Colors.grey, size: 32),
                       SizedBox(height: 8),
-                      Text('Kliknij "Podpisz" aby z\u0142o\u017cy\u0107 podpis',
+                      Text('Kliknij "Podpisz" aby złożyć podpis',
                           style: TextStyle(color: Colors.grey)),
                     ],
                   ),
                 ),
               ),
 
-            // Show locked signature preview
             if (!_isSigningMode && _signaturePoints.isNotEmpty)
               Container(
                 key: _signatureKey,
@@ -520,25 +741,16 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                   borderRadius: BorderRadius.circular(8),
                   color: Colors.green[50],
                 ),
-                child: Stack(
-                  children: [
-                    CustomPaint(
-                      painter: SignaturePainter(_signaturePoints),
-                      size: Size.infinite,
-                    ),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: Icon(Icons.lock, color: Colors.green[700], size: 20),
-                    ),
-                  ],
+                child: CustomPaint(
+                  painter: SignaturePainter(_signaturePoints),
+                  size: Size.infinite,
                 ),
               ),
 
-            // ===== SIGNING MODE - FULL DRAWING AREA =====
             if (_isSigningMode) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.orange[50],
                   borderRadius: const BorderRadius.only(
@@ -549,12 +761,16 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                    Icon(Icons.info_outline,
+                        color: Colors.orange, size: 18),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Ekran zablokowany - pisz palcem po polu poni\u017cej',
-                        style: TextStyle(color: Colors.orange, fontSize: 13, fontWeight: FontWeight.w500),
+                        'Ekran zablokowany - pisz palcem po polu poniżej',
+                        style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -573,21 +789,12 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 ),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onPanStart: (details) {
-                    setState(() {
-                      _signaturePoints.add(details.localPosition);
-                    });
-                  },
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _signaturePoints.add(details.localPosition);
-                    });
-                  },
-                  onPanEnd: (details) {
-                    setState(() {
-                      _signaturePoints.add(Offset.zero);
-                    });
-                  },
+                  onPanStart: (d) => setState(
+                      () => _signaturePoints.add(d.localPosition)),
+                  onPanUpdate: (d) => setState(
+                      () => _signaturePoints.add(d.localPosition)),
+                  onPanEnd: (_) =>
+                      setState(() => _signaturePoints.add(Offset.zero)),
                   child: CustomPaint(
                     painter: SignaturePainter(_signaturePoints),
                     size: Size.infinite,
@@ -599,55 +806,39 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _signaturePoints.clear();
-                      });
-                    },
+                    onPressed: () =>
+                        setState(() => _signaturePoints.clear()),
                     icon: const Icon(Icons.clear, size: 18),
-                    label: const Text('Wyczy\u015b\u0107'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    label: const Text('Wyczyść'),
+                    style: TextButton.styleFrom(
+                        foregroundColor: Colors.red),
                   ),
                   Row(
                     children: [
                       OutlinedButton(
-                        onPressed: () {
-                          setState(() {
-                            _signaturePoints.clear();
-                            _isSigningMode = false;
-                          });
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey[700],
-                          side: BorderSide(color: Colors.grey[400]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
+                        onPressed: () => setState(() {
+                          _signaturePoints.clear();
+                          _isSigningMode = false;
+                        }),
                         child: const Text('Anuluj'),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
-                        onPressed: _signaturePoints.isEmpty ? null : () {
-                          _exitSigningMode();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Row(
-                                children: [
-                                  Icon(Icons.check_circle, color: Colors.white),
-                                  SizedBox(width: 8),
-                                  Text('Podpis zapisany'),
-                                ],
-                              ),
-                              duration: Duration(seconds: 2),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
+                        onPressed: _signaturePoints.isEmpty
+                            ? null
+                            : () {
+                                _exitSigningMode();
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(const SnackBar(
+                                  content: Text('Podpis zapisany ✓'),
+                                  backgroundColor: Colors.green,
+                                ));
+                              },
                         icon: const Icon(Icons.check, size: 18),
-                        label: const Text('Zatwierd\u017a'),
+                        label: const Text('Zatwierdź'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[700],
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ],
@@ -656,40 +847,71 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
               ),
             ],
 
-            // Show "Popraw podpis" when signature exists and not in signing mode
-            if (!_isSigningMode && _signaturePoints.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _signaturePoints.clear();
-                      });
-                      _enterSigningMode();
-                    },
-                    icon: const Icon(Icons.edit, size: 18),
-                    label: const Text('Popraw podpis'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _generatePdf,
-                    icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label: const Text('Generuj PDF'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey[900],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            const SizedBox(height: 32),
+
+            // V9: Action buttons row
+            Row(
+              children: [
+                // Share PDF
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _generateAndShare,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Udostępnij PDF'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 12),
+                // V9: Archiwizuj i wyślij
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isArchiving ? null : _archiveAndSend,
+                    icon: _isArchiving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.cloud_upload),
+                    label: Text(
+                        _isArchiving ? 'Wysyłanie...' : 'Archiwizuj i wyślij'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
 
             const SizedBox(height: 40),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController ctrl, String label,
+      {int maxLines = 1}) {
+    return TextField(
+      controller: ctrl,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        border:
+            OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide:
+              const BorderSide(color: Colors.black87, width: 2),
         ),
       ),
     );
@@ -698,7 +920,6 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
 class SignaturePainter extends CustomPainter {
   final List<Offset> points;
-
   SignaturePainter(this.points);
 
   @override
@@ -707,7 +928,6 @@ class SignaturePainter extends CustomPainter {
       ..color = Colors.black
       ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round;
-
     for (int i = 0; i < points.length - 1; i++) {
       if (points[i] != Offset.zero && points[i + 1] != Offset.zero) {
         canvas.drawLine(points[i], points[i + 1], paint);

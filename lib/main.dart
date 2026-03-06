@@ -7,7 +7,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'screens/photo_list_screen.dart';
-
 import 'screens/simple_draw_screen.dart';
 import 'screens/sessions_screen.dart';
 import 'screens/work_tracking_screen.dart';
@@ -15,18 +14,17 @@ import 'models/photo_data.dart';
 import 'models/photo_session.dart';
 import 'utils/watermark_util.dart';
 import 'utils/session_manager.dart';
+import 'widgets/floor_picker_widget.dart';
 
 List<CameraDescription> cameras = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
   try {
     cameras = await availableCameras();
   } catch (e) {
     print('Error: $e');
   }
-  
   runApp(const MyApp());
 }
 
@@ -66,6 +64,10 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _selectedSessionId;
   String _selectedSessionName = 'Brak sesji';
 
+  // V9: Floor/height state
+  FloorData? _selectedFloor;
+  double? _customHeight;
+
   @override
   void initState() {
     super.initState();
@@ -75,16 +77,11 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _requestPermissions() async {
     final cameraStatus = await Permission.camera.request();
     final locationStatus = await Permission.location.request();
-    
+
     if (cameraStatus.isGranted) {
-      setState(() {
-        _permissionGranted = true;
-      });
+      setState(() => _permissionGranted = true);
       _initializeCamera();
-      
-      if (locationStatus.isGranted) {
-        _getCurrentLocation();
-      }
+      if (locationStatus.isGranted) _getCurrentLocation();
     }
   }
 
@@ -93,16 +90,11 @@ class _CameraScreenState extends State<CameraScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() => _gpsEnabled = false);
-        if (mounted) {
-          _showGpsWarning();
-        }
         return;
       }
-
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      
       setState(() {
         _currentPosition = position;
         _gpsEnabled = true;
@@ -110,153 +102,17 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       print('Error getting location: $e');
       setState(() => _gpsEnabled = false);
-      if (mounted) {
-        _showGpsWarning();
-      }
-    }
-  }
-
-  void _showGpsWarning() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('GPS wyłączony'),
-        content: const Text('Włącz GPS i dane komórkowe, aby zapisywać lokalizację na zdjęciach.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _navigateToCurrentLocation() async {
-    if (_currentPosition == null) {
-      await _getCurrentLocation();
-    }
-    
-    if (_currentPosition != null) {
-      final url = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${_currentPosition!.latitude},${_currentPosition!.longitude}',
-      );
-      
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nie można otworzyć nawigacji')),
-          );
-        }
-      }
-    }
-  }
-
-  Future<void> _showSessionSelector() async {
-    final sessions = await SessionManager.loadSessions();
-    
-    if (!mounted) return;
-    
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Wybierz sesję'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: const Text('Brak sesji'),
-                onTap: () => Navigator.pop(context, 'none'),
-              ),
-              const Divider(),
-              ...sessions.map((session) => ListTile(
-                leading: const Icon(Icons.folder),
-                title: Text(session.name),
-                subtitle: Text('${session.photoIds.length} zdjęć'),
-                onTap: () => Navigator.pop(context, session.id),
-              )),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: const Text('Utwórz nową sesję'),
-                onTap: () => Navigator.pop(context, 'create'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    
-    if (result == 'none') {
-      setState(() {
-        _selectedSessionId = null;
-        _selectedSessionName = 'Brak sesji';
-      });
-    } else if (result == 'create') {
-      final controller = TextEditingController();
-      final name = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Nowa sesja'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'Nazwa sesji',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Anuluj'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('Utwórz'),
-            ),
-          ],
-        ),
-      );
-      
-      if (name != null && name.isNotEmpty) {
-        final session = await SessionManager.createSession(name);
-        setState(() {
-          _selectedSessionId = session.id;
-          _selectedSessionName = session.name;
-        });
-      }
-    } else if (result != null) {
-      final session = sessions.firstWhere((s) => s.id == result);
-      setState(() {
-        _selectedSessionId = session.id;
-        _selectedSessionName = session.name;
-      });
     }
   }
 
   Future<void> _initializeCamera() async {
     if (cameras.isEmpty) return;
-
-    controller = CameraController(
-      cameras[0],
-      ResolutionPreset.high,
-    );
-
+    controller = CameraController(cameras[0], ResolutionPreset.high);
     try {
       await controller!.initialize();
       _maxZoom = await controller!.getMaxZoomLevel();
       _minZoom = await controller!.getMinZoomLevel();
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
+      if (mounted) setState(() => _isInitialized = true);
     } catch (e) {
       print('Error initializing camera: $e');
     }
@@ -270,23 +126,19 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _takePicture() async {
     if (controller == null || !controller!.value.isInitialized) return;
-
-    // Refresh GPS before taking photo
-    if (_gpsEnabled) {
-      await _getCurrentLocation();
-    }
+    if (_gpsEnabled) await _getCurrentLocation();
 
     try {
       final image = await controller!.takePicture();
-      
       if (!mounted) return;
-      
+
       final description = await Navigator.push<String>(
         context,
         MaterialPageRoute(
           builder: (context) => PhotoDescriptionScreen(
             imagePath: image.path,
             position: _currentPosition,
+            selectedFloor: _selectedFloor,
           ),
         ),
       );
@@ -310,18 +162,20 @@ class _CameraScreenState extends State<CameraScreen> {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'photo_$timestamp.jpg';
       final finalPath = '${photosDir.path}/$fileName';
-      
-      // Copy image
+
       await File(imagePath).copy(finalPath);
-      
-      // Add watermark with GPS
+
+      // V9: Watermark with floor + height
       await WatermarkUtil.addWatermark(
         finalPath,
         latitude: _currentPosition?.latitude,
         longitude: _currentPosition?.longitude,
+        altitude: _currentPosition?.altitude,
+        floorLabel: _selectedFloor?.label,
+        relativeHeight: _selectedFloor?.defaultHeight,
       );
 
-      // Save metadata with GPS
+      // V9: Save metadata with floor/height
       final photoData = PhotoData(
         imagePath: finalPath,
         description: description,
@@ -329,64 +183,144 @@ class _CameraScreenState extends State<CameraScreen> {
         latitude: _currentPosition?.latitude,
         longitude: _currentPosition?.longitude,
         sessionId: _selectedSessionId,
+        altitude: _currentPosition?.altitude,
+        floor: _selectedFloor?.number,
+        relativeHeight: _selectedFloor?.defaultHeight,
+        floorLabel: _selectedFloor?.label,
       );
 
       final metaFile = File('${photosDir.path}/photo_$timestamp.json');
       await metaFile.writeAsString(json.encode(photoData.toJson()));
 
-      // Add to session if one is selected
       if (_selectedSessionId != null) {
-        await SessionManager.addPhotoToSession(_selectedSessionId!, timestamp.toString());
+        await SessionManager.addPhotoToSession(
+            _selectedSessionId!, timestamp.toString());
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_currentPosition != null 
-                ? 'Zdjęcie zapisane z GPS na obrazie!' 
-                : 'Zdjęcie zapisane z watermarkiem'),
-          ),
-        );
+        String msg = _currentPosition != null
+            ? 'Zdjęcie zapisane z GPS'
+            : 'Zdjęcie zapisane';
+        if (_selectedFloor != null) {
+          msg += ' • ${_selectedFloor!.label}';
+        }
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } catch (e) {
       print('Error saving photo: $e');
     }
   }
 
+  Future<void> _showSessionSelector() async {
+    final sessions = await SessionManager.loadSessions();
+    if (!mounted) return;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Wybierz sesję'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: const Text('Brak sesji'),
+                onTap: () => Navigator.pop(context, 'none'),
+              ),
+              const Divider(),
+              ...sessions.map((session) => ListTile(
+                    leading: const Icon(Icons.folder),
+                    title: Text(session.name),
+                    subtitle: Text('${session.photoIds.length} zdjęć'),
+                    onTap: () => Navigator.pop(context, session.id),
+                  )),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Utwórz nową sesję'),
+                onTap: () => Navigator.pop(context, 'create'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (result == 'none') {
+      setState(() {
+        _selectedSessionId = null;
+        _selectedSessionName = 'Brak sesji';
+      });
+    } else if (result == 'create') {
+      final ctrl = TextEditingController();
+      final name = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Nowa sesja'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(
+              labelText: 'Nazwa sesji',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Anuluj')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, ctrl.text),
+                child: const Text('Utwórz')),
+          ],
+        ),
+      );
+      if (name != null && name.isNotEmpty) {
+        final session = await SessionManager.createSession(name);
+        setState(() {
+          _selectedSessionId = session.id;
+          _selectedSessionName = session.name;
+        });
+      }
+    } else if (result != null) {
+      final session = sessions.firstWhere((s) => s.id == result);
+      setState(() {
+        _selectedSessionId = session.id;
+        _selectedSessionName = session.name;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_permissionGranted) {
-      return Scaffold(
-        body: const Center(child: Text('Brak uprawnień do aparatu')),
-      );
+      return const Scaffold(
+          body: Center(child: Text('Brak uprawnień do aparatu')));
     }
-
     if (!_isInitialized || controller == null) {
-      return Scaffold(
-        body: const Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Full screen camera preview
+          // Camera preview with pinch zoom
           Positioned.fill(
             child: GestureDetector(
-              onScaleStart: (details) {
-                _baseScale = _currentZoom;
-              },
+              onScaleStart: (_) => _baseScale = _currentZoom,
               onScaleUpdate: (details) async {
-                final newZoom = (_baseScale * details.scale).clamp(_minZoom, _maxZoom);
+                final newZoom =
+                    (_baseScale * details.scale).clamp(_minZoom, _maxZoom);
                 await controller!.setZoomLevel(newZoom);
-                setState(() {
-                  _currentZoom = newZoom;
-                });
+                setState(() => _currentZoom = newZoom);
               },
               child: CameraPreview(controller!),
             ),
           ),
-          
+
           // Top left: Logo + GPS dot
           Positioned(
             top: 0,
@@ -399,7 +333,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   children: [
                     Image.asset('assets/logo.png', height: 32),
                     const SizedBox(width: 8),
-                    // GPS dot indicator
                     Container(
                       width: 12,
                       height: 12,
@@ -408,7 +341,8 @@ class _CameraScreenState extends State<CameraScreen> {
                         color: _gpsEnabled ? Colors.green : Colors.red,
                         boxShadow: [
                           BoxShadow(
-                            color: (_gpsEnabled ? Colors.green : Colors.red).withOpacity(0.5),
+                            color: (_gpsEnabled ? Colors.green : Colors.red)
+                                .withOpacity(0.5),
                             blurRadius: 4,
                             spreadRadius: 1,
                           ),
@@ -420,7 +354,7 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
           ),
-          
+
           // Top right: Hamburger menu
           Positioned(
             top: 0,
@@ -429,12 +363,74 @@ class _CameraScreenState extends State<CameraScreen> {
               child: IconButton(
                 icon: const Icon(Icons.menu, color: Colors.white, size: 32),
                 padding: const EdgeInsets.all(20),
-                onPressed: () => _showMainMenu(),
+                onPressed: _showMainMenu,
               ),
             ),
           ),
-          
-          // Capture button with larger hit area
+
+          // V9: Floor picker - bottom left above capture button
+          Positioned(
+            bottom: 140,
+            left: 16,
+            right: 16,
+            child: Row(
+              children: [
+                FloorPickerWidget(
+                  selectedFloor: _selectedFloor?.number,
+                  onFloorSelected: (floor) {
+                    setState(() => _selectedFloor = floor);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            '📍 ${floor.label} (${floor.defaultHeight >= 0 ? '+' : ''}${floor.defaultHeight.toStringAsFixed(1)}m)'),
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+                if (_selectedFloor != null) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => setState(() => _selectedFloor = null),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.close,
+                          color: Colors.white70, size: 16),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // V9: Floor info chip (shows selected floor)
+          if (_selectedFloor != null)
+            Positioned(
+              bottom: 175,
+              left: 16,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_selectedFloor!.label} • ${_selectedFloor!.defaultHeight >= 0 ? '+' : ''}${_selectedFloor!.defaultHeight.toStringAsFixed(1)}m',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+
+          // Capture button
           Positioned(
             bottom: 40,
             left: 0,
@@ -443,7 +439,7 @@ class _CameraScreenState extends State<CameraScreen> {
               child: GestureDetector(
                 onTap: _takePicture,
                 child: Container(
-                  width: 110, // Larger hit area
+                  width: 110,
                   height: 110,
                   alignment: Alignment.center,
                   child: Container(
@@ -452,7 +448,8 @@ class _CameraScreenState extends State<CameraScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Colors.white,
-                      border: Border.all(color: Colors.white.withOpacity(0.5), width: 6),
+                      border: Border.all(
+                          color: Colors.white.withOpacity(0.5), width: 6),
                     ),
                   ),
                 ),
@@ -464,7 +461,6 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  // Main hamburger menu
   void _showMainMenu() {
     showModalBottomSheet(
       context: context,
@@ -480,38 +476,49 @@ class _CameraScreenState extends State<CameraScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.access_time, size: 32),
-                title: const Text('Praca', style: TextStyle(fontSize: 18)),
+                title:
+                    const Text('Praca', style: TextStyle(fontSize: 18)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => WorkTrackingScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => WorkTrackingScreen()));
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.folder_open, size: 32),
-                title: const Text('Sesje', style: TextStyle(fontSize: 18)),
+                title:
+                    const Text('Sesje', style: TextStyle(fontSize: 18)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SessionsScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SessionsScreen()));
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.photo_library, size: 32),
-                title: const Text('Galeria', style: TextStyle(fontSize: 18)),
+                title:
+                    const Text('Galeria', style: TextStyle(fontSize: 18)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PhotoListScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const PhotoListScreen()));
                 },
-              ),
-              ListTile(
-                leading: const Icon(Icons.picture_as_pdf, size: 32),
-                title: const Text('Raporty', style: TextStyle(fontSize: 18)),
-                subtitle: const Text('Dostępne w sesjach'),
-                enabled: false,
               ),
               const Divider(),
               ListTile(
-                leading: Icon(Icons.folder, size: 32, color: _selectedSessionId == null ? Colors.grey : Colors.blue),
-                title: Text(_selectedSessionName, style: const TextStyle(fontSize: 16)),
+                leading: Icon(Icons.folder,
+                    size: 32,
+                    color: _selectedSessionId == null
+                        ? Colors.grey
+                        : Colors.blue),
+                title: Text(_selectedSessionName,
+                    style: const TextStyle(fontSize: 16)),
                 subtitle: const Text('Aktualna sesja'),
                 trailing: const Icon(Icons.edit),
                 onTap: () {
@@ -527,18 +534,24 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 }
 
+// ============================================================
+// PhotoDescriptionScreen V9 - with floor info display
+// ============================================================
 class PhotoDescriptionScreen extends StatefulWidget {
   final String imagePath;
   final Position? position;
+  final FloorData? selectedFloor;
 
   const PhotoDescriptionScreen({
     super.key,
     required this.imagePath,
     this.position,
+    this.selectedFloor,
   });
 
   @override
-  State<PhotoDescriptionScreen> createState() => _PhotoDescriptionScreenState();
+  State<PhotoDescriptionScreen> createState() =>
+      _PhotoDescriptionScreenState();
 }
 
 class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
@@ -565,36 +578,19 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.check, size: 28),
-            onPressed: () {
-              Navigator.pop(context, _controller.text);
-              // Show subtle checkmark animation
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Zapisano'),
-                    ],
-                  ),
-                  duration: const Duration(milliseconds: 800),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
+            onPressed: () => Navigator.pop(context, _controller.text),
           ),
         ],
       ),
       body: Column(
         children: [
-          // Full screen image
           Expanded(
             child: Stack(
               children: [
                 Center(
-                  child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+                  child: Image.file(File(widget.imagePath),
+                      fit: BoxFit.contain),
                 ),
-                // Edit button floating
                 Positioned(
                   bottom: 16,
                   right: 16,
@@ -603,12 +599,11 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
                       final edited = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => SimpleDrawScreen(imagePath: widget.imagePath),
+                          builder: (context) =>
+                              SimpleDrawScreen(imagePath: widget.imagePath),
                         ),
                       );
-                      if (edited == true && mounted) {
-                        setState(() {});
-                      }
+                      if (edited == true && mounted) setState(() {});
                     },
                     backgroundColor: Colors.white,
                     child: const Icon(Icons.edit, color: Colors.black),
@@ -617,8 +612,6 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
               ],
             ),
           ),
-          
-          // Description input + GPS
           Container(
             color: Colors.grey[900],
             padding: const EdgeInsets.all(16),
@@ -627,26 +620,56 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
                 // GPS chip
                 if (widget.position != null)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.green[100],
+                      color: Colors.green[900]!.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.location_on, color: Colors.green, size: 18),
+                        const Icon(Icons.location_on,
+                            color: Colors.green, size: 16),
                         const SizedBox(width: 6),
                         Text(
-                          'GPS: ${widget.position!.latitude.toStringAsFixed(6)}, ${widget.position!.longitude.toStringAsFixed(6)}',
-                          style: TextStyle(fontSize: 11, color: Colors.green[900]),
+                          'GPS: ${widget.position!.latitude.toStringAsFixed(5)}, ${widget.position!.longitude.toStringAsFixed(5)}',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.greenAccent),
                         ),
                       ],
                     ),
                   ),
-                
-                // Text field
+
+                // V9: Floor chip
+                if (widget.selectedFloor != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[900]!.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.layers,
+                            color: Colors.blue, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${widget.selectedFloor!.label} • ${widget.selectedFloor!.defaultHeight >= 0 ? '+' : ''}${widget.selectedFloor!.defaultHeight.toStringAsFixed(1)}m',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.lightBlueAccent),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Description field
                 TextField(
                   controller: _controller,
                   style: const TextStyle(color: Colors.white),
