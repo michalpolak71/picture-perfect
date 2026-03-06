@@ -1,110 +1,65 @@
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis_auth/auth_io.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'dart:convert';
 
 class GoogleSheetsService {
-  static const _scopes = [sheets.SheetsApi.spreadsheetsScope];
-  static sheets.SheetsApi? _sheetsApi;
-  static bool _initialized = false;
-
-  // ⚠️ Wpisz swoje ID arkusza po konfiguracji Google Cloud
-  static const String spreadsheetId = 'YOUR_SPREADSHEET_ID_HERE';
+  static const String spreadsheetId =
+      '1RmrAKaeHcq1GAcfogJfRGAprmiciPy6XERJhKprIkqk';
   static const String sheetName = 'Raporty';
+  static const List<String> _scopes = [sheets.SheetsApi.spreadsheetsScope];
 
-  static Future<bool> initialize() async {
-    if (_initialized) return true;
+  sheets.SheetsApi? _sheetsApi;
+
+  Future<void> initialize() async {
     try {
-      final jsonString =
+      final jsonStr =
           await rootBundle.loadString('assets/service_account.json');
-      final accountCredentials =
-          ServiceAccountCredentials.fromJson(json.decode(jsonString));
+      final credentials =
+          ServiceAccountCredentials.fromJson(json.decode(jsonStr));
       final client =
-          await clientViaServiceAccount(accountCredentials, _scopes);
+          await clientViaServiceAccount(credentials, _scopes);
       _sheetsApi = sheets.SheetsApi(client);
-      _initialized = true;
-      return true;
     } catch (e) {
-      print('Error initializing Google Sheets: $e');
-      return false;
+      print('Sheets init error: $e');
+      rethrow;
     }
   }
 
-  static Future<bool> addReportRow({
-    required String date,
+  Future<void> addReportRow({
+    required DateTime date,
     required String reportNumber,
-    required String project,
-    required String client,
+    required String projectName,
+    required String clientName,
     required String createdBy,
     required int photoCount,
     String? pdfLink,
     String? sessionLink,
-    String? floorInfo,
   }) async {
-    if (!_initialized) await initialize();
-    if (_sheetsApi == null) return false;
+    if (_sheetsApi == null) throw Exception('Sheets not initialized');
 
-    try {
-      final rowData = [
-        date,
-        reportNumber,
-        project,
-        client,
-        createdBy,
-        photoCount.toString(),
-        floorInfo ?? '',
-        pdfLink ?? '',
-        sessionLink ?? '',
-        '✓',
-      ];
+    final dateStr =
+        '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
-      final valueRange = sheets.ValueRange()..values = [rowData];
+    final row = [
+      dateStr,
+      reportNumber,
+      projectName,
+      clientName,
+      createdBy,
+      photoCount.toString(),
+      pdfLink ?? '',
+      sessionLink ?? '',
+      '✓',
+    ];
 
-      await _sheetsApi!.spreadsheets.values.append(
-        valueRange,
-        spreadsheetId,
-        '$sheetName!A:J',
-        valueInputOption: 'RAW',
-      );
+    final valueRange = sheets.ValueRange(values: [row]);
 
-      return true;
-    } catch (e) {
-      print('Error adding row to sheet: $e');
-      return false;
-    }
-  }
-
-  static Future<bool> createSheetStructure() async {
-    if (!_initialized) await initialize();
-    if (_sheetsApi == null) return false;
-
-    try {
-      final headers = [
-        'Data',
-        'Nr raportu',
-        'Projekt',
-        'Klient',
-        'Sporządził',
-        'Liczba zdjęć',
-        'Kondygnacje',
-        'Link PDF',
-        'Link Sesja',
-        'Status',
-      ];
-
-      final valueRange = sheets.ValueRange()..values = [headers];
-
-      await _sheetsApi!.spreadsheets.values.update(
-        valueRange,
-        spreadsheetId,
-        '$sheetName!A1:J1',
-        valueInputOption: 'RAW',
-      );
-
-      return true;
-    } catch (e) {
-      print('Error creating sheet structure: $e');
-      return false;
-    }
+    await _sheetsApi!.spreadsheets.values.append(
+      valueRange,
+      spreadsheetId,
+      '$sheetName!A:I',
+      valueInputOption: 'RAW',
+    );
   }
 }

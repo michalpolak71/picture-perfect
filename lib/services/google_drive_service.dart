@@ -1,142 +1,151 @@
-import 'dart:io';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'dart:io';
+import '../models/photo_data.dart';
 
 class GoogleDriveService {
-  static const _scopes = [drive.DriveApi.driveFileScope];
-  static drive.DriveApi? _driveApi;
-  static bool _initialized = false;
+  static const String _rootFolderId =
+      '10FYUR8tpncJX8mP5SQy1kghnWg2jmvV_';
+  static const List<String> _scopes = [drive.DriveApi.driveScope];
 
-  static Future<bool> initialize() async {
-    if (_initialized) return true;
+  drive.DriveApi? _driveApi;
+
+  Future<void> initialize() async {
     try {
-      final jsonString = await rootBundle.loadString('assets/service_account.json');
-      final accountCredentials =
-          ServiceAccountCredentials.fromJson(json.decode(jsonString));
-      final client = await clientViaServiceAccount(accountCredentials, _scopes);
+      final jsonStr =
+          await rootBundle.loadString('assets/service_account.json');
+      final credentials =
+          ServiceAccountCredentials.fromJson(json.decode(jsonStr));
+      final client =
+          await clientViaServiceAccount(credentials, _scopes);
       _driveApi = drive.DriveApi(client);
-      _initialized = true;
-      return true;
     } catch (e) {
-      print('Error initializing Google Drive: $e');
-      return false;
+      print('Drive init error: $e');
+      rethrow;
     }
   }
 
-  static Future<String?> createFolder(String folderName, {String? parentId}) async {
-    if (!_initialized) await initialize();
-    if (_driveApi == null) return null;
+  Future<String> _findOrCreateFolder(
+      String name, String parentId) async {
+    if (_driveApi == null) throw Exception('Drive not initialized');
 
-    try {
-      final query = parentId != null
-          ? "name='$folderName' and '$parentId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-          : "name='$folderName' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    // Search for existing folder
+    final query =
+        "name='$name' and '$parentId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    final result = await _driveApi!.files.list(q: query, $fields: 'files(id)');
 
-      final existing = await _driveApi!.files.list(q: query, spaces: 'drive');
-      if (existing.files != null && existing.files!.isNotEmpty) {
-        return existing.files!.first.id;
-      }
-
-      final folder = drive.File()
-        ..name = folderName
-        ..mimeType = 'application/vnd.google-apps.folder';
-      if (parentId != null) folder.parents = [parentId];
-
-      final createdFolder = await _driveApi!.files.create(folder);
-      return createdFolder.id;
-    } catch (e) {
-      print('Error creating folder: $e');
-      return null;
+    if (result.files != null && result.files!.isNotEmpty) {
+      return result.files!.first.id!;
     }
+
+    // Create new folder
+    final folder = drive.File()
+      ..name = name
+      ..mimeType = 'application/vnd.google-apps.folder'
+      ..parents = [parentId];
+
+    final created =
+        await _driveApi!.files.create(folder, $fields: 'id');
+    return created.id!;
   }
 
-  static Future<String?> uploadFile(
-    File file,
-    String fileName, {
-    String? folderId,
-    String? mimeType,
-  }) async {
-    if (!_initialized) await initialize();
+  Future<String?> _uploadFile(
+      File file, String fileName, String folderId, String mimeType) async {
     if (_driveApi == null) return null;
 
     try {
       final driveFile = drive.File()
         ..name = fileName
-        ..mimeType = mimeType ?? 'application/octet-stream';
-      if (folderId != null) driveFile.parents = [folderId];
+        ..parents = [folderId];
 
-      final media = drive.Media(file.openRead(), file.lengthSync());
-      final response = await _driveApi!.files.create(driveFile, uploadMedia: media);
-
-      await _driveApi!.permissions.create(
-        drive.Permission()
-          ..type = 'anyone'
-          ..role = 'reader',
-        response.id!,
+      final media = drive.Media(file.openRead(), await file.length());
+      final result = await _driveApi!.files.create(
+        driveFile,
+        uploadMedia: media,
+        $fields: 'id, webViewLink',
       );
 
-      return 'https://drive.google.com/file/d/${response.id}/view';
+      // Make public
+      final permission = drive.Permission()
+        ..role = 'reader'
+        ..type = 'anyone';
+      await _driveApi!.permissions.create(permission, result.id!);
+
+      return result.webViewLink;
     } catch (e) {
-      print('Error uploading file: $e');
+      print('Upload error: $e');
       return null;
     }
   }
 
-  static Future<Map<String, String?>> uploadReport({
+  Future<Map<String, String?>> uploadReport({
     required File pdfFile,
     required String reportNumber,
     required String projectName,
     required String clientName,
-    List<File>? photos,
+    required List<PhotoData> photos,
   }) async {
-    try {
-      final rootFolderId = await createFolder('Interklima Raporty');
-      if (rootFolderId == null) return {};
+    if (_driveApi == null) throw Exception('Drive not initialized');
 
-      final now = DateTime.now();
-      final monthFolder =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}';
-      final monthFolderId =
-          await createFolder(monthFolder, parentId: rootFolderId);
-      if (monthFolderId == null) return {};
+    final now = DateTime.now();
+    final months = [
+      '', 'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
+      'lip', 'sie', 'wrz', 'paz', 'lis', 'gru'
+    ];
+    final monthFolder =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${months[now.month]}';
 
-      final pdfFileName =
-          'raport_${reportNumber.replaceAll('/', '_')}.pdf';
-      final pdfLink = await uploadFile(
-        pdfFile,
-        pdfFileName,
-        folderId: monthFolderId,
-        mimeType: 'application/pdf',
-      );
+    // Create month folder
+    final monthFolderId =
+        await _findOrCreateFolder(monthFolder, _rootFolderId);
 
-      String? sessionFolderLink;
+    // Upload PDF
+    final safeProject =
+        projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    final safeClient =
+        clientName.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    final pdfName =
+        'raport_${safeProject}_${safeClient}_${now.millisecondsSinceEpoch}.pdf';
+    final pdfLink =
+        await _uploadFile(pdfFile, pdfName, monthFolderId, 'application/pdf');
 
-      if (photos != null && photos.isNotEmpty) {
-        final sessionFolderName =
-            'sesja_${projectName}_${clientName}_${reportNumber.replaceAll('/', '_')}';
-        final sessionFolderId =
-            await createFolder(sessionFolderName, parentId: monthFolderId);
+    // Create session folder for photos
+    final sessionFolderName =
+        'sesja_${safeProject}_${safeClient}_${now.day.toString().padLeft(2, '0')}${months[now.month]}${now.year}';
+    final sessionFolderId =
+        await _findOrCreateFolder(sessionFolderName, monthFolderId);
 
-        if (sessionFolderId != null) {
-          sessionFolderLink =
-              'https://drive.google.com/drive/folders/$sessionFolderId';
-          for (int i = 0; i < photos.length; i++) {
-            await uploadFile(
-              photos[i],
-              'zdjecie_${i + 1}.jpg',
-              folderId: sessionFolderId,
-              mimeType: 'image/jpeg',
-            );
-          }
-        }
+    // Upload photos
+    for (int i = 0; i < photos.length; i++) {
+      final photo = photos[i];
+      final photoFile = File(photo.imagePath);
+      if (await photoFile.exists()) {
+        final photoName =
+            'zdjecie_${(i + 1).toString().padLeft(2, '0')}.jpg';
+        await _uploadFile(
+            photoFile, photoName, sessionFolderId, 'image/jpeg');
       }
-
-      return {'pdfLink': pdfLink, 'sessionLink': sessionFolderLink};
-    } catch (e) {
-      print('Error uploading report: $e');
-      return {};
     }
+
+    // Get session folder link
+    String? sessionLink;
+    try {
+      final folderMeta = await _driveApi!.files
+          .get(sessionFolderId, $fields: 'webViewLink') as drive.File;
+      sessionLink = folderMeta.webViewLink;
+
+      // Make session folder public
+      final permission = drive.Permission()
+        ..role = 'reader'
+        ..type = 'anyone';
+      await _driveApi!.permissions.create(permission, sessionFolderId);
+    } catch (_) {}
+
+    return {
+      'pdfLink': pdfLink,
+      'sessionLink': sessionLink,
+    };
   }
 }

@@ -2,19 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
-import 'screens/photo_list_screen.dart';
-import 'screens/simple_draw_screen.dart';
 import 'screens/sessions_screen.dart';
-import 'screens/work_tracking_screen.dart';
+import 'screens/simple_draw_screen.dart';
 import 'models/photo_data.dart';
-import 'models/photo_session.dart';
 import 'utils/watermark_util.dart';
 import 'utils/session_manager.dart';
-import 'widgets/floor_picker_widget.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -34,18 +29,26 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Picture Perfect',
+      title: 'Interklima',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0066CC)),
         useMaterial3: true,
       ),
-      home: const CameraScreen(),
+      home: const SessionsScreen(),
     );
   }
 }
 
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key});
+  final String sessionId;
+  final String sessionName;
+
+  const CameraScreen({
+    super.key,
+    required this.sessionId,
+    required this.sessionName,
+  });
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -55,29 +58,32 @@ class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   bool _permissionGranted = false;
   bool _isInitialized = false;
-  bool _gpsEnabled = true;
+  bool _gpsEnabled = false;
   Position? _currentPosition;
   double _currentZoom = 1.0;
   double _minZoom = 1.0;
   double _maxZoom = 8.0;
   double _baseScale = 1.0;
-  String? _selectedSessionId;
-  String _selectedSessionName = 'Brak sesji';
-
-  // V9: Floor/height state
-  FloorData? _selectedFloor;
-  double? _customHeight;
+  int _photoCount = 0;
 
   @override
   void initState() {
     super.initState();
     _requestPermissions();
+    _loadPhotoCount();
+  }
+
+  Future<void> _loadPhotoCount() async {
+    final sessions = await SessionManager.loadSessions();
+    try {
+      final session = sessions.firstWhere((s) => s.id == widget.sessionId);
+      setState(() => _photoCount = session.photoIds.length);
+    } catch (_) {}
   }
 
   Future<void> _requestPermissions() async {
     final cameraStatus = await Permission.camera.request();
     final locationStatus = await Permission.location.request();
-
     if (cameraStatus.isGranted) {
       setState(() => _permissionGranted = true);
       _initializeCamera();
@@ -92,7 +98,7 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() => _gpsEnabled = false);
         return;
       }
-      Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
       setState(() {
@@ -100,7 +106,6 @@ class _CameraScreenState extends State<CameraScreen> {
         _gpsEnabled = true;
       });
     } catch (e) {
-      print('Error getting location: $e');
       setState(() => _gpsEnabled = false);
     }
   }
@@ -126,7 +131,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _takePicture() async {
     if (controller == null || !controller!.value.isInitialized) return;
-    if (_gpsEnabled) await _getCurrentLocation();
+    await _getCurrentLocation();
 
     try {
       final image = await controller!.takePicture();
@@ -138,13 +143,13 @@ class _CameraScreenState extends State<CameraScreen> {
           builder: (context) => PhotoDescriptionScreen(
             imagePath: image.path,
             position: _currentPosition,
-            selectedFloor: _selectedFloor,
           ),
         ),
       );
 
       if (description != null) {
         await _savePhoto(image.path, description);
+        setState(() => _photoCount++);
       }
     } catch (e) {
       print('Error taking picture: $e');
@@ -165,149 +170,62 @@ class _CameraScreenState extends State<CameraScreen> {
 
       await File(imagePath).copy(finalPath);
 
-      // V9: Watermark with floor + height
       await WatermarkUtil.addWatermark(
         finalPath,
         latitude: _currentPosition?.latitude,
         longitude: _currentPosition?.longitude,
         altitude: _currentPosition?.altitude,
-        floorLabel: _selectedFloor?.label,
-        relativeHeight: _selectedFloor?.defaultHeight,
       );
 
-      // V9: Save metadata with floor/height
       final photoData = PhotoData(
         imagePath: finalPath,
         description: description,
         timestamp: timestamp,
         latitude: _currentPosition?.latitude,
         longitude: _currentPosition?.longitude,
-        sessionId: _selectedSessionId,
+        sessionId: widget.sessionId,
         altitude: _currentPosition?.altitude,
-        floor: _selectedFloor?.number,
-        relativeHeight: _selectedFloor?.defaultHeight,
-        floorLabel: _selectedFloor?.label,
       );
 
       final metaFile = File('${photosDir.path}/photo_$timestamp.json');
       await metaFile.writeAsString(json.encode(photoData.toJson()));
 
-      if (_selectedSessionId != null) {
-        await SessionManager.addPhotoToSession(
-            _selectedSessionId!, timestamp.toString());
-      }
+      await SessionManager.addPhotoToSession(
+          widget.sessionId, timestamp.toString());
 
       if (mounted) {
-        String msg = _currentPosition != null
-            ? 'Zdjęcie zapisane z GPS'
-            : 'Zdjęcie zapisane';
-        if (_selectedFloor != null) {
-          msg += ' • ${_selectedFloor!.label}';
-        }
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_currentPosition != null
+              ? '✓ Zdjęcie zapisane z GPS'
+              : '✓ Zdjęcie zapisane (brak GPS)'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ));
       }
     } catch (e) {
       print('Error saving photo: $e');
     }
   }
 
-  Future<void> _showSessionSelector() async {
-    final sessions = await SessionManager.loadSessions();
-    if (!mounted) return;
-
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Wybierz sesję'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: const Text('Brak sesji'),
-                onTap: () => Navigator.pop(context, 'none'),
-              ),
-              const Divider(),
-              ...sessions.map((session) => ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: Text(session.name),
-                    subtitle: Text('${session.photoIds.length} zdjęć'),
-                    onTap: () => Navigator.pop(context, session.id),
-                  )),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.add),
-                title: const Text('Utwórz nową sesję'),
-                onTap: () => Navigator.pop(context, 'create'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (result == 'none') {
-      setState(() {
-        _selectedSessionId = null;
-        _selectedSessionName = 'Brak sesji';
-      });
-    } else if (result == 'create') {
-      final ctrl = TextEditingController();
-      final name = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Nowa sesja'),
-          content: TextField(
-            controller: ctrl,
-            decoration: const InputDecoration(
-              labelText: 'Nazwa sesji',
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Anuluj')),
-            TextButton(
-                onPressed: () => Navigator.pop(context, ctrl.text),
-                child: const Text('Utwórz')),
-          ],
-        ),
-      );
-      if (name != null && name.isNotEmpty) {
-        final session = await SessionManager.createSession(name);
-        setState(() {
-          _selectedSessionId = session.id;
-          _selectedSessionName = session.name;
-        });
-      }
-    } else if (result != null) {
-      final session = sessions.firstWhere((s) => s.id == result);
-      setState(() {
-        _selectedSessionId = session.id;
-        _selectedSessionName = session.name;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (!_permissionGranted) {
-      return const Scaffold(
-          body: Center(child: Text('Brak uprawnień do aparatu')));
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.sessionName)),
+        body: const Center(child: Text('Brak uprawnień do aparatu')),
+      );
     }
     if (!_isInitialized || controller == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.sessionName)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Camera preview with pinch zoom
+          // Full screen camera
           Positioned.fill(
             child: GestureDetector(
               onScaleStart: (_) => _baseScale = _currentZoom,
@@ -321,30 +239,93 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // Top left: Logo + GPS dot
+          // Top bar
           Positioned(
             top: 0,
             left: 0,
+            right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Image.asset('assets/logo.png', height: 32),
-                    const SizedBox(width: 8),
+                    // Back button
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.arrow_back,
+                            color: Colors.white, size: 24),
+                      ),
+                    ),
+
+                    // Session name + photo count
                     Container(
-                      width: 12,
-                      height: 12,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _gpsEnabled ? Colors.green : Colors.red,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (_gpsEnabled ? Colors.green : Colors.red)
-                                .withOpacity(0.5),
-                            blurRadius: 4,
-                            spreadRadius: 1,
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.folder,
+                              color: Colors.white70, size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.sessionName,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 13),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$_photoCount',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // GPS indicator
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color:
+                                  _gpsEnabled ? Colors.green : Colors.red,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _gpsEnabled ? 'GPS' : 'brak GPS',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 11),
                           ),
                         ],
                       ),
@@ -355,102 +336,29 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          // Top right: Hamburger menu
+          // Logo bottom left
           Positioned(
-            top: 0,
-            right: 0,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white, size: 32),
-                padding: const EdgeInsets.all(20),
-                onPressed: _showMainMenu,
-              ),
-            ),
+            bottom: 50,
+            left: 20,
+            child: Image.asset('assets/logo.png', height: 28),
           ),
-
-          // V9: Floor picker - bottom left above capture button
-          Positioned(
-            bottom: 140,
-            left: 16,
-            right: 16,
-            child: Row(
-              children: [
-                FloorPickerWidget(
-                  selectedFloor: _selectedFloor?.number,
-                  onFloorSelected: (floor) {
-                    setState(() => _selectedFloor = floor);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            '📍 ${floor.label} (${floor.defaultHeight >= 0 ? '+' : ''}${floor.defaultHeight.toStringAsFixed(1)}m)'),
-                        duration: const Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                ),
-                if (_selectedFloor != null) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => setState(() => _selectedFloor = null),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.close,
-                          color: Colors.white70, size: 16),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // V9: Floor info chip (shows selected floor)
-          if (_selectedFloor != null)
-            Positioned(
-              bottom: 175,
-              left: 16,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${_selectedFloor!.label} • ${_selectedFloor!.defaultHeight >= 0 ? '+' : ''}${_selectedFloor!.defaultHeight.toStringAsFixed(1)}m',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
 
           // Capture button
           Positioned(
-            bottom: 40,
+            bottom: 30,
             left: 0,
             right: 0,
             child: Center(
               child: GestureDetector(
                 onTap: _takePicture,
                 child: Container(
-                  width: 110,
-                  height: 110,
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.5), width: 6),
-                    ),
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.5), width: 5),
                   ),
                 ),
               ),
@@ -460,93 +368,19 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
     );
   }
-
-  void _showMainMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.access_time, size: 32),
-                title:
-                    const Text('Praca', style: TextStyle(fontSize: 18)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => WorkTrackingScreen()));
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.folder_open, size: 32),
-                title:
-                    const Text('Sesje', style: TextStyle(fontSize: 18)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const SessionsScreen()));
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library, size: 32),
-                title:
-                    const Text('Galeria', style: TextStyle(fontSize: 18)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const PhotoListScreen()));
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: Icon(Icons.folder,
-                    size: 32,
-                    color: _selectedSessionId == null
-                        ? Colors.grey
-                        : Colors.blue),
-                title: Text(_selectedSessionName,
-                    style: const TextStyle(fontSize: 16)),
-                subtitle: const Text('Aktualna sesja'),
-                trailing: const Icon(Icons.edit),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showSessionSelector();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ============================================================
-// PhotoDescriptionScreen V9 - with floor info display
+// PhotoDescriptionScreen
 // ============================================================
 class PhotoDescriptionScreen extends StatefulWidget {
   final String imagePath;
   final Position? position;
-  final FloorData? selectedFloor;
 
   const PhotoDescriptionScreen({
     super.key,
     required this.imagePath,
     this.position,
-    this.selectedFloor,
   });
 
   @override
@@ -576,25 +410,29 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
         ),
         title: const Text('Dodaj opis', style: TextStyle(fontSize: 16)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.check, size: 28),
+          TextButton(
             onPressed: () => Navigator.pop(context, _controller.text),
+            child: const Text('ZAPISZ',
+                style: TextStyle(
+                    color: Colors.blue, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
       body: Column(
         children: [
+          // Photo preview
           Expanded(
             child: Stack(
               children: [
                 Center(
-                  child: Image.file(File(widget.imagePath),
-                      fit: BoxFit.contain),
+                  child:
+                      Image.file(File(widget.imagePath), fit: BoxFit.contain),
                 ),
+                // Edit button
                 Positioned(
                   bottom: 16,
                   right: 16,
-                  child: FloatingActionButton(
+                  child: FloatingActionButton.small(
                     onPressed: () async {
                       final edited = await Navigator.push(
                         context,
@@ -606,84 +444,86 @@ class _PhotoDescriptionScreenState extends State<PhotoDescriptionScreen> {
                       if (edited == true && mounted) setState(() {});
                     },
                     backgroundColor: Colors.white,
-                    child: const Icon(Icons.edit, color: Colors.black),
+                    child:
+                        const Icon(Icons.edit, color: Colors.black, size: 20),
                   ),
                 ),
               ],
             ),
           ),
+
+          // Bottom panel
           Container(
             color: Colors.grey[900],
             padding: const EdgeInsets.all(16),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // GPS chip
+                // GPS info
                 if (widget.position != null)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 8),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.green[900]!.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green),
+                      color: Colors.green.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.5)),
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.location_on,
-                            color: Colors.green, size: 16),
+                            color: Colors.green, size: 14),
                         const SizedBox(width: 6),
                         Text(
-                          'GPS: ${widget.position!.latitude.toStringAsFixed(5)}, ${widget.position!.longitude.toStringAsFixed(5)}',
+                          '${widget.position!.latitude.toStringAsFixed(5)}, ${widget.position!.longitude.toStringAsFixed(5)}',
                           style: const TextStyle(
-                              fontSize: 11, color: Colors.greenAccent),
+                              color: Colors.greenAccent, fontSize: 11),
                         ),
                       ],
                     ),
-                  ),
-
-                // V9: Floor chip
-                if (widget.selectedFloor != null)
+                  )
+                else
                   Container(
-                    margin: const EdgeInsets.only(bottom: 8),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.blue[900]!.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue),
+                      color: Colors.red.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.5)),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: const Row(
                       children: [
-                        const Icon(Icons.layers,
-                            color: Colors.blue, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${widget.selectedFloor!.label} • ${widget.selectedFloor!.defaultHeight >= 0 ? '+' : ''}${widget.selectedFloor!.defaultHeight.toStringAsFixed(1)}m',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.lightBlueAccent),
-                        ),
+                        Icon(Icons.location_off, color: Colors.red, size: 14),
+                        SizedBox(width: 6),
+                        Text('Brak GPS',
+                            style:
+                                TextStyle(color: Colors.redAccent, fontSize: 11)),
                       ],
                     ),
                   ),
 
-                // Description field
+                // Description input
                 TextField(
                   controller: _controller,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
                     hintText: 'Dodaj opis zdjęcia...',
-                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    hintStyle: TextStyle(color: Colors.grey[500]),
                     filled: true,
                     fillColor: Colors.grey[800],
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
+                    contentPadding: const EdgeInsets.all(12),
                   ),
-                  maxLines: 2,
+                  maxLines: 3,
                   autofocus: true,
                 ),
               ],
