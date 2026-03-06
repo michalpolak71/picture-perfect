@@ -7,6 +7,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
 import '../models/photo_data.dart';
+import '../services/google_drive_service.dart';
+import '../services/google_sheets_service.dart';
 
 class PdfReportScreen extends StatefulWidget {
   final List<PhotoData> photos;
@@ -273,6 +275,69 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     }
   }
 
+
+  Future<void> _archiveAndSend() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 20),
+          Text('Wysyłanie...'),
+        ]),
+      ),
+    );
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final allFiles = Directory(directory.path)
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.pdf'))
+          .toList();
+      allFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      if (allFiles.isEmpty) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Najpierw wygeneruj PDF')),
+        );
+        return;
+      }
+      final pdfFile = allFiles.first;
+      final fileName = pdfFile.path.split(Platform.pathSeparator).last;
+
+      final driveService = GoogleDriveService();
+      await driveService.initialize();
+      final pdfLink = await driveService.uploadPdf(pdfFile, fileName);
+
+      final sheetsService = GoogleSheetsService();
+      await sheetsService.initialize();
+      await sheetsService.addReportRow(
+        date: DateTime.now(),
+        reportNumber: _getReportNumber(),
+        projectName: _projectController.text,
+        clientName: _clientController.text,
+        createdBy: _nameController.text,
+        photoCount: _selectedPhotos.length,
+        pdfLink: pdfLink,
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✓ Wysłano do Drive i Sheets!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd: $e')),
+        );
+      }
+    }
+  }
+
   // ===== FOOTER - ONLY BABICE NOWE =====
   pw.Widget _buildFooter() {
     return pw.Container(
@@ -372,6 +437,11 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.cloud_upload),
+            tooltip: 'Wyślij do Drive i Sheets',
+            onPressed: _archiveAndSend,
+          ),
           IconButton(
             icon: const Icon(Icons.check),
             onPressed: _generatePdf,
