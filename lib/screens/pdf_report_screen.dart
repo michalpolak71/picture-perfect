@@ -265,12 +265,27 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       await _saveReportNumber();
 
       if (mounted) {
-        Navigator.pop(context);
-        Navigator.pop(context);
-
-        await Share.shareXFiles(
-          [XFile(pdfPath)],
-          subject: 'Raport Interklima $reportNum - ${_projectController.text}',
+        Navigator.pop(context); // zamknij dialog ładowania
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text('PDF wygenerowany! Znajdziesz go w Raporty.')),
+            ]),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Udostępnij',
+              textColor: Colors.white,
+              onPressed: () async {
+                await Share.shareXFiles(
+                  [XFile(pdfPath)],
+                  subject: 'Raport Interklima $reportNum - ${_projectController.text}',
+                );
+              },
+            ),
+          ),
         );
       }
     } catch (e) {
