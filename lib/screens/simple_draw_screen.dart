@@ -27,7 +27,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
   Offset? _currentShapeEnd;
   final GlobalKey _imageKey = GlobalKey();
 
-  void _addText() {
+  void _handleTapForText(Offset position) {
     showDialog(
       context: context,
       builder: (context) {
@@ -50,7 +50,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                   setState(() {
                     texts.add(DrawnText(
                       text: text,
-                      position: const Offset(100, 200),
+                      position: position,
                       color: selectedColor,
                     ));
                   });
@@ -105,8 +105,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
         for (int i = 0; i < line.path.length - 1; i++) {
           canvas.drawLine(
             Offset(line.path[i].dx * scaleX, line.path[i].dy * scaleY),
-            Offset(
-                line.path[i + 1].dx * scaleX, line.path[i + 1].dy * scaleY),
+            Offset(line.path[i + 1].dx * scaleX, line.path[i + 1].dy * scaleY),
             paint,
           );
         }
@@ -123,8 +122,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
 
         if (shape.tool == DrawingTool.arrow) {
           canvas.drawLine(start, end, paint);
-          final angle =
-              atan2(end.dy - start.dy, end.dx - start.dx);
+          final angle = atan2(end.dy - start.dy, end.dx - start.dx);
           final arrowSize = 25.0 * scaleX;
           final path = Path()
             ..moveTo(end.dx, end.dy)
@@ -135,9 +133,8 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                 end.dy - arrowSize * sin(angle + pi / 6));
           canvas.drawPath(path, paint);
         } else if (shape.tool == DrawingTool.circle) {
-          final radius = ((end - start).distance / 2);
-          final center =
-              Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+          final radius = (end - start).distance / 2;
+          final center = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
           canvas.drawCircle(center, radius, paint);
         }
       }
@@ -230,32 +227,21 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _toolButton(DrawingTool.pen, Icons.edit, 'Rysuj'),
-                    _toolButton(
-                        DrawingTool.arrow, Icons.arrow_forward, 'Strzałka'),
-                    _toolButton(
-                        DrawingTool.circle, Icons.circle_outlined, 'Kółko'),
-                    GestureDetector(
-                      onTap: _addText,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: selectedTool == DrawingTool.text
-                            ? BoxDecoration(
-                                color: Colors.black12,
-                                borderRadius: BorderRadius.circular(8),
-                              )
-                            : null,
-                        child: const Column(
-                          children: [
-                            Icon(Icons.text_fields, color: Colors.grey, size: 32),
-                            SizedBox(height: 4),
-                            Text('Tekst', style: TextStyle(fontSize: 10)),
-                          ],
-                        ),
-                      ),
-                    ),
+                    _toolButton(DrawingTool.arrow, Icons.arrow_forward, 'Strzałka'),
+                    _toolButton(DrawingTool.circle, Icons.circle_outlined, 'Kółko'),
+                    _toolButton(DrawingTool.text, Icons.text_fields, 'Tekst'),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
+                if (selectedTool == DrawingTool.text)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Dotknij miejsce na zdjęciu aby wstawić tekst',
+                      style: TextStyle(fontSize: 12, color: Colors.orange),
+                    ),
+                  ),
+                const SizedBox(height: 4),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -286,13 +272,16 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                   ),
                   Positioned.fill(
                     child: GestureDetector(
+                      onTapUp: (details) {
+                        if (selectedTool == DrawingTool.text) {
+                          _handleTapForText(details.localPosition);
+                        }
+                      },
                       onPanStart: (details) {
                         if (selectedTool == DrawingTool.pen) {
                           setState(() {
                             lines.add(DrawnLine(
-                                [details.localPosition],
-                                selectedColor,
-                                strokeWidth));
+                                [details.localPosition], selectedColor, strokeWidth));
                           });
                         } else if (selectedTool != DrawingTool.text) {
                           setState(() {
@@ -302,8 +291,7 @@ class _SimpleDrawScreenState extends State<SimpleDrawScreen> {
                         }
                       },
                       onPanUpdate: (details) {
-                        if (selectedTool == DrawingTool.pen &&
-                            lines.isNotEmpty) {
+                        if (selectedTool == DrawingTool.pen && lines.isNotEmpty) {
                           setState(() {
                             lines.last.path.add(details.localPosition);
                           });
@@ -465,7 +453,6 @@ class DrawingPainter extends CustomPainter {
       _drawShape(canvas, shape.start, shape.end, shape.color, shape.width, shape.tool);
     }
 
-    // Live preview
     if (previewStart != null &&
         previewEnd != null &&
         previewTool != null &&
@@ -511,8 +498,7 @@ class DrawingPainter extends CustomPainter {
       canvas.drawPath(path, paint);
     } else if (tool == DrawingTool.circle) {
       final radius = (end - start).distance / 2;
-      final center =
-          Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
+      final center = Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
       canvas.drawCircle(center, radius, paint);
     }
   }

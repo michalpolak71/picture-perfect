@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 class GoogleDriveService {
-  static const String _rootFolderName = 'Interklima Raporty';
+  static const String _rootFolderId = '10FYUR8tpncJX8mP5SQy1kghnWg2jmvV_';
   static const List<String> _scopes = [drive.DriveApi.driveScope];
 
   drive.DriveApi? _driveApi;
@@ -17,23 +17,30 @@ class GoogleDriveService {
     _driveApi = drive.DriveApi(client);
   }
 
-  Future<String> _findOrCreateFolder(String name, {String? parentId}) async {
-    String query = "name='$name' and mimeType='application/vnd.google-apps.folder' and trashed=false";
-    if (parentId != null) {
-      query = "name='$name' and '$parentId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false";
-    }
+  Future<String> _findOrCreateSubfolder(String name) async {
+    final query =
+        "name='$name' and '$_rootFolderId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false";
+    final result = await _driveApi!.files.list(
+      q: query,
+      $fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    );
 
-    final result = await _driveApi!.files.list(q: query, $fields: 'files(id)');
     if (result.files != null && result.files!.isNotEmpty) {
       return result.files!.first.id!;
     }
 
     final folder = drive.File()
       ..name = name
-      ..mimeType = 'application/vnd.google-apps.folder';
-    if (parentId != null) folder.parents = [parentId];
+      ..mimeType = 'application/vnd.google-apps.folder'
+      ..parents = [_rootFolderId];
 
-    final created = await _driveApi!.files.create(folder, $fields: 'id');
+    final created = await _driveApi!.files.create(
+      folder,
+      $fields: 'id',
+      supportsAllDrives: true,
+    );
     return created.id!;
   }
 
@@ -41,16 +48,15 @@ class GoogleDriveService {
     if (_driveApi == null) throw Exception('Drive not initialized');
 
     final now = DateTime.now();
-    final months = ['', 'sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paz', 'lis', 'gru'];
+    final months = [
+      '', 'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
+      'lip', 'sie', 'wrz', 'paz', 'lis', 'gru'
+    ];
 
-    // Root folder
-    final rootId = await _findOrCreateFolder(_rootFolderName);
+    final monthName =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${months[now.month]}';
+    final monthId = await _findOrCreateSubfolder(monthName);
 
-    // Month subfolder
-    final monthName = '${now.year}-${now.month.toString().padLeft(2, '0')}-${months[now.month]}';
-    final monthId = await _findOrCreateFolder(monthName, parentId: rootId);
-
-    // Upload PDF
     final driveFile = drive.File()
       ..name = fileName
       ..parents = [monthId];
@@ -60,13 +66,18 @@ class GoogleDriveService {
       driveFile,
       uploadMedia: media,
       $fields: 'id, webViewLink',
+      supportsAllDrives: true,
     );
 
-    // Make public
+    // Udostępnij publicznie
     final permission = drive.Permission()
       ..role = 'reader'
       ..type = 'anyone';
-    await _driveApi!.permissions.create(permission, result.id!);
+    await _driveApi!.permissions.create(
+      permission,
+      result.id!,
+      supportsAllDrives: true,
+    );
 
     return result.webViewLink;
   }
