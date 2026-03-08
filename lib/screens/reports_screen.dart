@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/google_drive_service.dart';
@@ -23,6 +24,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _loadReports() async {
+    setState(() => _loading = true);
     final directory = await getApplicationDocumentsDirectory();
     final files = Directory(directory.path)
         .listSync()
@@ -43,6 +45,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}  ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<Map<String, dynamic>> _loadMeta(File f) async {
+    try {
+      final metaPath = f.path.replaceAll('.pdf', '.json');
+      final metaFile = File(metaPath);
+      if (await metaFile.exists()) {
+        return json.decode(await metaFile.readAsString());
+      }
+    } catch (_) {}
+    return {};
+  }
+
   Future<void> _shareByEmail(File f) async {
     await Share.shareXFiles([XFile(f.path)], subject: _fileName(f));
   }
@@ -61,6 +74,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     try {
+      final meta = await _loadMeta(f);
+
       final driveService = GoogleDriveService();
       await driveService.initialize();
       final pdfLink = await driveService.uploadPdf(f, _fileName(f));
@@ -69,11 +84,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
       await sheetsService.initialize();
       await sheetsService.addReportRow(
         date: f.lastModifiedSync(),
-        reportNumber: _fileName(f),
-        projectName: '-',
-        clientName: '-',
-        createdBy: '-',
-        photoCount: 0,
+        reportNumber: meta['reportNumber'] ?? _fileName(f),
+        projectName: meta['project'] ?? '-',
+        clientName: meta['client'] ?? '-',
+        createdBy: meta['author'] ?? '-',
+        photoCount: meta['photoCount'] ?? 0,
         pdfLink: pdfLink,
       );
 
@@ -118,6 +133,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     if (confirm == true) {
       await f.delete();
+      // Usuń też metadane
+      final metaFile = File(f.path.replaceAll('.pdf', '.json'));
+      if (await metaFile.exists()) await metaFile.delete();
       _loadReports();
     }
   }
@@ -131,10 +149,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadReports,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadReports),
         ],
       ),
       body: _loading

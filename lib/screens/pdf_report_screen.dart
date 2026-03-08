@@ -257,36 +257,22 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       );
 
       final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
       final pdfPath =
-          '${directory.path}/raport_${_reportNumber.toString().padLeft(3, '0')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+          '\${directory.path}/raport_\${_reportNumber.toString().padLeft(3, '0')}_\$timestamp.pdf';
       final file = File(pdfPath);
       await file.writeAsBytes(await pdf.save());
+
+      // Zapisz metadane obok PDF
+      final metaPath = pdfPath.replaceAll('.pdf', '.json');
+      await File(metaPath).writeAsString(
+        '{"reportNumber":"\$reportNum","project":"\${_projectController.text}","client":"\${_clientController.text}","author":"\${_nameController.text}","photoCount":\${selectedPhotosList.length}}',
+      );
 
       await _saveReportNumber();
 
       if (mounted) {
         Navigator.pop(context); // zamknij dialog ładowania
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 8),
-              Expanded(child: Text('PDF wygenerowany! Znajdziesz go w Raporty.')),
-            ]),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Udostępnij',
-              textColor: Colors.white,
-              onPressed: () async {
-                await Share.shareXFiles(
-                  [XFile(pdfPath)],
-                  subject: 'Raport Interklima $reportNum - ${_projectController.text}',
-                );
-              },
-            ),
-          ),
-        );
       }
     } catch (e) {
       if (mounted) {
