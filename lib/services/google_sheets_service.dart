@@ -20,6 +20,7 @@ class GoogleSheetsService {
   Future<void> addReportRow({
     required DateTime date,
     required String reportNumber,
+    required String docType,
     required String projectName,
     required String clientName,
     required String createdBy,
@@ -31,10 +32,11 @@ class GoogleSheetsService {
     final dateStr =
         '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
-    // Kolumny: DATA | NR RAPORTU | PROJEKT | KLIENT | SPORZĄDZIŁ | LICZBA ZDJĘĆ | LINK PDF | UWAGI
+    // Kolumny: DATA | NR RAPORTU | TYP | PROJEKT | KLIENT | SPORZĄDZIŁ | LICZBA ZDJĘĆ | LINK PDF | UWAGI
     final row = [
       dateStr,
       reportNumber,
+      docType,
       projectName,
       clientName,
       createdBy,
@@ -47,7 +49,7 @@ class GoogleSheetsService {
     await _sheetsApi!.spreadsheets.values.append(
       valueRange,
       spreadsheetId,
-      '$sheetName!A:H',
+      '$sheetName!A:I',
       valueInputOption: 'RAW',
     );
   }

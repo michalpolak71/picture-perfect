@@ -25,12 +25,16 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   final _projectController = TextEditingController();
   final _clientController = TextEditingController();
   final _summaryController = TextEditingController();
+  final _customDocTypeController = TextEditingController();
   final List<Offset> _signaturePoints = [];
   final Set<int> _selectedPhotos = {};
   int _reportNumber = 1;
   bool _isSigningMode = false;
   final GlobalKey _signatureKey = GlobalKey();
   final ScrollController _scrollController = ScrollController();
+
+  String _selectedDocType = 'Raport';
+  final List<String> _docTypes = ['Raport', 'Protokół', 'Inny'];
 
   @override
   void initState() {
@@ -39,6 +43,14 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     for (int i = 0; i < widget.photos.length; i++) {
       _selectedPhotos.add(i);
     }
+  }
+
+  String get _fullDocType {
+    if (_selectedDocType == 'Inny') {
+      final custom = _customDocTypeController.text.trim();
+      return custom.isEmpty ? 'Inny' : custom;
+    }
+    return _selectedDocType;
   }
 
   Future<void> _loadReportNumber() async {
@@ -70,7 +82,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     final now = DateTime.now();
     final months = [
       'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
-      'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'
+      'lip', 'sie', 'wrz', 'paz', 'lis', 'gru'
     ];
     return 'Nr ${_reportNumber.toString().padLeft(3, '0')}/${now.day}/${months[now.month - 1]}/${now.year}';
   }
@@ -118,6 +130,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
 
       final reportNum = _getReportNumber();
       final selectedPhotosList = _selectedPhotos.toList()..sort();
+      final docTitle = _fullDocType.toUpperCase();
 
       pdf.addPage(
         pw.Page(
@@ -128,7 +141,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
               children: [
                 pw.Image(logo, width: 200),
                 pw.SizedBox(height: 40),
-                pw.Text('RAPORT Z DOKUMENTACJI',
+                pw.Text(docTitle,
                     style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 20),
                 pw.Divider(),
@@ -264,10 +277,10 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final file = File(pdfPath);
       await file.writeAsBytes(await pdf.save());
 
-      // Zapisz metadane obok PDF
       final metaPath = pdfPath.replaceAll('.pdf', '.json');
       final meta = {
         'reportNumber': reportNum,
+        'docType': _fullDocType,
         'project': _projectController.text,
         'client': _clientController.text,
         'author': _nameController.text,
@@ -278,7 +291,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       await _saveReportNumber();
 
       if (mounted) {
-        Navigator.pop(context); // zamknij dialog ładowania
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -341,6 +354,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       await sheetsService.addReportRow(
         date: DateTime.now(),
         reportNumber: _getReportNumber(),
+        docType: _fullDocType,
         projectName: _projectController.text,
         clientName: _clientController.text,
         createdBy: _nameController.text,
@@ -455,6 +469,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
     _projectController.dispose();
     _clientController.dispose();
     _summaryController.dispose();
+    _customDocTypeController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -463,7 +478,7 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Raport PDF'),
+        title: const Text('Nowy dokument'),
         backgroundColor: Colors.grey[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -489,8 +504,46 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Numer raportu: ${_getReportNumber()}',
+            Text('Numer: ${_getReportNumber()}',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+
+            // Typ dokumentu
+            const Text('Typ dokumentu:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: _docTypes.map((type) {
+                final selected = _selectedDocType == type;
+                return ChoiceChip(
+                  label: Text(type),
+                  selected: selected,
+                  selectedColor: Colors.grey[900],
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : Colors.black87,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                  onSelected: (_) => setState(() => _selectedDocType = type),
+                );
+              }).toList(),
+            ),
+            if (_selectedDocType == 'Inny') ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _customDocTypeController,
+                decoration: InputDecoration(
+                  labelText: 'Nazwa własna dokumentu',
+                  hintText: 'np. Raport z wizji lokalnej',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Colors.black87, width: 2),
+                  ),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
             const SizedBox(height: 16),
 
             TextField(
