@@ -6,7 +6,7 @@ import 'dart:io';
 
 class GoogleDriveService {
   static const String _rootFolderId = '10FYUR8tpncJX8mP5SQy1kghnWg2jmvV_';
-  static const List<String> _scopes = [drive.DriveApi.driveScope];
+  static const List<String> _scopes = [drive.DriveApi.driveFileScope];
 
   drive.DriveApi? _driveApi;
 
@@ -23,8 +23,6 @@ class GoogleDriveService {
     final result = await _driveApi!.files.list(
       q: query,
       $fields: 'files(id)',
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
     );
 
     if (result.files != null && result.files!.isNotEmpty) {
@@ -36,11 +34,7 @@ class GoogleDriveService {
       ..mimeType = 'application/vnd.google-apps.folder'
       ..parents = [_rootFolderId];
 
-    final created = await _driveApi!.files.create(
-      folder,
-      $fields: 'id',
-      supportsAllDrives: true,
-    );
+    final created = await _driveApi!.files.create(folder, $fields: 'id');
     return created.id!;
   }
 
@@ -66,17 +60,6 @@ class GoogleDriveService {
       driveFile,
       uploadMedia: media,
       $fields: 'id, webViewLink',
-      supportsAllDrives: true,
-    );
-
-    // Udostępnij publicznie
-    final permission = drive.Permission()
-      ..role = 'reader'
-      ..type = 'anyone';
-    await _driveApi!.permissions.create(
-      permission,
-      result.id!,
-      supportsAllDrives: true,
     );
 
     return result.webViewLink;
