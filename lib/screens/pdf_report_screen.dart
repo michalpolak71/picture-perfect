@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
+import 'dart:convert';
 import '../models/photo_data.dart';
 import '../services/google_drive_service.dart';
 import '../services/google_sheets_service.dart';
@@ -259,15 +260,20 @@ class _PdfReportScreenState extends State<PdfReportScreen> {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final pdfPath =
-          '\${directory.path}/raport_\${_reportNumber.toString().padLeft(3, '0')}_\$timestamp.pdf';
+          '${directory.path}/raport_${_reportNumber.toString().padLeft(3, "0")}_$timestamp.pdf';
       final file = File(pdfPath);
       await file.writeAsBytes(await pdf.save());
 
       // Zapisz metadane obok PDF
       final metaPath = pdfPath.replaceAll('.pdf', '.json');
-      await File(metaPath).writeAsString(
-        '{"reportNumber":"\$reportNum","project":"\${_projectController.text}","client":"\${_clientController.text}","author":"\${_nameController.text}","photoCount":\${selectedPhotosList.length}}',
-      );
+      final meta = {
+        'reportNumber': reportNum,
+        'project': _projectController.text,
+        'client': _clientController.text,
+        'author': _nameController.text,
+        'photoCount': selectedPhotosList.length,
+      };
+      await File(metaPath).writeAsString(json.encode(meta));
 
       await _saveReportNumber();
 
