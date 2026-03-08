@@ -31,6 +31,7 @@ class GoogleSheetsService {
     final dateStr =
         '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
+    // Kolumny: DATA | NR RAPORTU | PROJEKT | KLIENT | SPORZĄDZIŁ | LICZBA ZDJĘĆ | LINK PDF | UWAGI
     final row = [
       dateStr,
       reportNumber,
@@ -39,7 +40,7 @@ class GoogleSheetsService {
       createdBy,
       photoCount.toString(),
       pdfLink ?? '',
-      '✓',
+      '',
     ];
 
     final valueRange = sheets.ValueRange(values: [row]);
