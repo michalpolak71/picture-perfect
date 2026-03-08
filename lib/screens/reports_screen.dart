@@ -85,6 +85,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       await sheetsService.addReportRow(
         date: f.lastModifiedSync(),
         reportNumber: meta['reportNumber'] ?? _fileName(f),
+        docType: meta['docType'] ?? 'Raport',
         projectName: meta['project'] ?? '-',
         clientName: meta['client'] ?? '-',
         createdBy: meta['author'] ?? '-',
@@ -133,7 +134,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     if (confirm == true) {
       await f.delete();
-      // Usuń też metadane
       final metaFile = File(f.path.replaceAll('.pdf', '.json'));
       if (await metaFile.exists()) await metaFile.delete();
       _loadReports();
