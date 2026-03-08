@@ -27,13 +27,17 @@ class GoogleDriveService {
     ];
     final folder =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${months[now.month]}';
-    final objectName = '$folder/$fileName';
+    
+    // Wyczyść nazwę pliku z niedozwolonych znaków
+    final cleanName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._\-]'), '_');
+    final objectName = '$folder/$cleanName';
 
     final object = gcs.Object()
       ..name = objectName
       ..contentType = 'application/pdf';
 
-    final media = gcs.Media(pdfFile.openRead(), await pdfFile.length());
+    final fileLength = await pdfFile.length();
+    final media = gcs.Media(pdfFile.openRead(), fileLength);
 
     await _storageApi!.objects.insert(
       object,
