@@ -6,13 +6,16 @@ import 'dart:io';
 
 class GoogleDriveService {
   static const String _bucketName = 'interklima-raporty-pdf';
-  static const List<String> _scopes = [gcs.StorageApi.devstorageFullControlScope];
+  static const List<String> _scopes = [
+    gcs.StorageApi.devstorageFullControlScope
+  ];
 
   gcs.StorageApi? _storageApi;
 
   Future<void> initialize() async {
     final jsonStr = await rootBundle.loadString('assets/service_account.json');
-    final credentials = ServiceAccountCredentials.fromJson(json.decode(jsonStr));
+    final credentials =
+        ServiceAccountCredentials.fromJson(json.decode(jsonStr));
     final client = await clientViaServiceAccount(credentials, _scopes);
     _storageApi = gcs.StorageApi(client);
   }
@@ -22,28 +25,41 @@ class GoogleDriveService {
 
     final now = DateTime.now();
     final months = [
-      '', 'sty', 'lut', 'mar', 'kwi', 'maj', 'cze',
-      'lip', 'sie', 'wrz', 'paz', 'lis', 'gru'
+      '',
+      'sty',
+      'lut',
+      'mar',
+      'kwi',
+      'maj',
+      'cze',
+      'lip',
+      'sie',
+      'wrz',
+      'paz',
+      'lis',
+      'gru'
     ];
     final folder =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${months[now.month]}';
-    
-    // Wyczyść nazwę pliku z niedozwolonych znaków
-    final cleanName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._\-]'), '_');
+
+    final cleanName =
+        fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._\-]'), '_');
     final objectName = '$folder/$cleanName';
+
+    // Wczytaj plik do pamięci
+    final bytes = await pdfFile.readAsBytes();
+    final stream = Stream.fromIterable([bytes]);
+    final media = gcs.Media(stream, bytes.length,
+        contentType: 'application/pdf');
 
     final object = gcs.Object()
       ..name = objectName
       ..contentType = 'application/pdf';
 
-    final fileLength = await pdfFile.length();
-    final media = gcs.Media(pdfFile.openRead(), fileLength);
-
     await _storageApi!.objects.insert(
       object,
       _bucketName,
       uploadMedia: media,
-      predefinedAcl: 'publicRead',
     );
 
     return 'https://storage.googleapis.com/$_bucketName/$objectName';
